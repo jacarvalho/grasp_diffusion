@@ -1,3 +1,4 @@
+import time
 import scipy.spatial.transform
 import torch
 import numpy as np
@@ -89,10 +90,21 @@ if __name__ == '__main__':
     n_envs = 30
 
     ## Set Model and Sample Generator ##
+    start_time = time.time()
     P, mesh = sample_pointcloud(obj_id, obj_class)
+    end_time = time.time()
+    print(f"Time taken to sample point cloud: {end_time - start_time:.4f} seconds")
+    
+    start_time = time.time()
     generator, model = get_approximated_grasp_diffusion_field(P, device)
+    end_time = time.time()
+    print(f"Time taken to set up grasp diffusion field: {end_time - start_time:.4f} seconds")
 
+    start_time = time.time()
     H = generator.sample()
+    end_time = time.time()
+    print(f"Time taken to sample grasps: {end_time - start_time:.4f} seconds")
+    
     H[..., :3, -1] *=1/8.
 
     ## Visualize results ##
