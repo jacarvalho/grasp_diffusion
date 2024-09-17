@@ -15,7 +15,8 @@ from se3dif.trainer.learning_rate_scheduler import get_learning_rate_schedules
 
 base_dir = os.path.abspath(os.path.dirname(__file__))
 root_dir = os.path.abspath(os.path.dirname(__file__ + '/../../../../../'))
-
+# Define the base path to the dataset directory
+dataset_dir = os.path.join(base_dir, '../../../../grasp_diffusion_network/dataset_acronym_shapenetsem')
 
 def parse_args():
     p = configargparse.ArgumentParser()
@@ -63,13 +64,51 @@ def main(opt):
         device = torch.device('cuda:' + str(cuda_device) if torch.cuda.is_available() else 'cpu')
     else:
         device = torch.device('cpu')
+        
+    # Define paths to the grasp files within the dataset
+    train_file_relative = os.path.join(
+        dataset_dir,
+        'grasps/Mug_6a9b31e1298ca1109c515ccf0f61e75f_0.029998777830639544.h5'
+    )
+    test_file_relative = os.path.join(
+        dataset_dir,
+        'grasps/Mug_ba10400c108e5c3f54e1b6f41fdd78a_0.01695507616001961.h5'
+    )
+
+    # Ensure the paths are normalized
+    train_file_path = os.path.normpath(train_file_relative)
+    test_file_path = os.path.normpath(test_file_relative)
+
+    # Define the train and test files using the paths
+    train_files = [train_file_path]
+    test_files = [test_file_path]
 
     ## Dataset
-    train_dataset = datasets.PartialPointcloudAcronymAndSDFDataset(augmented_rotation=True, one_object=args['single_object'])
-    train_dataloader = DataLoader(train_dataset, batch_size=args['TrainSpecs']['batch_size'], shuffle=True, drop_last=True)
-    test_dataset = datasets.PartialPointcloudAcronymAndSDFDataset(augmented_rotation=True, one_object=args['single_object'],
-                                                                  test_files=train_dataset.test_grasp_files)
-    test_dataloader = DataLoader(test_dataset, batch_size=args['TrainSpecs']['batch_size'], shuffle=True, drop_last=True)
+    train_dataset = datasets.PartialPointcloudAcronymAndSDFDataset(
+        augmented_rotation=True,
+        one_object=args['single_object'],
+        phase='train',
+        train_files=train_files
+    )
+    train_dataloader = DataLoader(
+        train_dataset,
+        batch_size=args['TrainSpecs']['batch_size'],
+        shuffle=True,
+        drop_last=True
+    )
+    test_dataset = datasets.PartialPointcloudAcronymAndSDFDataset(
+        augmented_rotation=True,
+        one_object=args['single_object'],
+        phase='test',
+        test_files=test_files
+    )
+    test_dataloader = DataLoader(
+        test_dataset,
+        batch_size=args['TrainSpecs']['batch_size'],
+        shuffle=True,
+        drop_last=True
+    )
+
 
     ## Model
     args['device'] = device

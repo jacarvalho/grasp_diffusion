@@ -439,8 +439,9 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
     'DataLoader for training DeepSDF with a Rotation Invariant Encoder model'
     def __init__(self, class_type=['Cup', 'Mug', 'Fork', 'Hat', 'Bottle'],
                  se3=False, phase='train', one_object=False,
-                 n_pointcloud = 1000, n_density = 200, n_coords = 1000,
-                 augmented_rotation=True, visualize=False, split = True, test_files=None):
+                 n_pointcloud=1000, n_density=200, n_coords=1000,
+                 augmented_rotation=True, visualize=False, split=True,
+                 train_files=None, test_files=None):
 
         self.class_type = class_type
         self.data_dir = get_data_src()
@@ -449,7 +450,7 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
 
         self.grasp_files = []
         for class_type_i in class_type:
-            cls_grasps_files = sorted(glob.glob(self.grasps_dir+'/'+class_type_i+'/*.h5'))
+            cls_grasps_files = sorted(glob.glob(self.grasps_dir + '/' + class_type_i + '/*.h5'))
 
             for grasp_file in cls_grasps_files:
                 g_obj = AcronymGrasps(grasp_file)
@@ -458,21 +459,31 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
                 if g_obj.good_grasps.shape[0] > 0:
                     self.grasp_files.append(grasp_file)
 
-        ## Split Train/Validation
-        n = len(self.grasp_files)
-        train_size = int(n*0.9)
-        test_size  =  n - train_size
-
-        self.train_grasp_files, self.test_grasp_files = torch.utils.data.random_split(self.grasp_files, [train_size, test_size])
-        self.type = 'train'
-        self.len = len(self.train_grasp_files)
+        ## Handle custom train and test files
+        if train_files is not None:
+            self.train_grasp_files = train_files
+        else:
+            self.train_grasp_files = self.grasp_files
 
         if test_files is not None:
             self.test_grasp_files = test_files
-            self.set_test_data()
+        else:
+            ## Split Train/Test if test_files not provided
+            n = len(self.grasp_files)
+            train_size = int(n * 0.9)
+            test_size = n - train_size
+            self.train_grasp_files, self.test_grasp_files = torch.utils.data.random_split(
+                self.grasp_files, [train_size, test_size])
+
+        ## Set dataset phase and length
+        self.phase = phase
+        if self.phase == 'train':
+            self.len = len(self.train_grasp_files)
+        else:
+            self.len = len(self.test_grasp_files)
 
         self.n_pointcloud = n_pointcloud
-        self.n_density  = n_density
+        self.n_density = n_density
         self.n_occ = n_coords
 
         ## Variables on Data
@@ -490,37 +501,32 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
     def __len__(self):
         return self.len
 
-    def set_test_data(self):
-        self.len = len(self.test_grasp_files)
-        self.type = 'test'
-
     def _get_grasps(self, grasp_obj):
         try:
             rix = np.random.randint(low=0, high=grasp_obj.good_grasps.shape[0], size=self.n_density)
         except:
-            print('lets see')
+            print('Error in sampling grasps.')
         H_grasps = grasp_obj.good_grasps[rix, ...]
         return H_grasps
 
     def _get_sdf(self, grasp_obj, grasp_file):
-
         mesh_fname = grasp_obj.mesh_fname
         mesh_scale = grasp_obj.mesh_scale
 
         mesh_type = mesh_fname.split('/')[1]
         mesh_name = mesh_fname.split('/')[-1]
-        filename  = mesh_name.split('.obj')[0]
-        sdf_file = os.path.join(self.data_dir, 'sdf', mesh_type, filename+'.json')
+        filename = mesh_name.split('.obj')[0]
+        sdf_file = os.path.join(self.data_dir, 'sdf', mesh_type, filename + '.json')
 
         with open(sdf_file, 'rb') as handle:
             sdf_dict = pickle.load(handle)
 
         loc = sdf_dict['loc']
         scale = sdf_dict['scale']
-        xyz = (sdf_dict['xyz'] + loc)*scale*mesh_scale
+        xyz = (sdf_dict['xyz'] + loc) * scale * mesh_scale
         rix = np.random.permutation(xyz.shape[0])
         xyz = xyz[rix[:self.n_occ], :]
-        sdf = sdf_dict['sdf'][rix[:self.n_occ]]*scale*mesh_scale
+        sdf = sdf_dict['sdf'][rix[:self.n_occ]] * scale * mesh_scale
         return xyz, sdf
 
     def _get_mesh_pcl(self, grasp_obj):
@@ -531,14 +537,12 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         H[:3, -1] = -centroid
         mesh.apply_transform(H)
         ######################
-        #time0 = time.time()
         P = self.scan_pointcloud.get_hq_scan_view(mesh)
-        #print('Sample takes {} s'.format(time.time() - time0))
-        P +=centroid
+        P += centroid
         try:
             rix = np.random.randint(low=0, high=P.shape[0], size=self.n_pointcloud)
         except:
-            print('here')
+            print('Error in sampling point cloud.')
         return P[rix, :]
 
     def _get_item(self, index):
@@ -546,13 +550,15 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
             index = 0
 
         ## Load Files ##
-        if self.type == 'train':
-            grasps_obj = AcronymGrasps(self.train_grasp_files[index])
+        if self.phase == 'train':
+            grasp_file = self.train_grasp_files[index]
         else:
-            grasps_obj = AcronymGrasps(self.test_grasp_files[index])
+            grasp_file = self.test_grasp_files[index]
+
+        grasps_obj = AcronymGrasps(grasp_file)
 
         ## SDF
-        xyz, sdf = self._get_sdf(grasps_obj, self.train_grasp_files[index])
+        xyz, sdf = self._get_sdf(grasps_obj, grasp_file)
 
         ## PointCloud
         pcl = self._get_mesh_pcl(grasps_obj)
@@ -561,10 +567,10 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         H_grasps = self._get_grasps(grasps_obj)
 
         ## rescale, rotate and translate ##
-        xyz = xyz*self.scale
-        sdf = sdf*self.scale
-        pcl = pcl*self.scale
-        H_grasps[..., :3, -1] = H_grasps[..., :3, -1]*self.scale
+        xyz = xyz * self.scale
+        sdf = sdf * self.scale
+        pcl = pcl * self.scale
+        H_grasps[..., :3, -1] = H_grasps[..., :3, -1] * self.scale
         ## Random rotation ##
         R = special_ortho_group.rvs(3)
         H = np.eye(4)
@@ -575,36 +581,34 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         pcl = pcl - mean
         H_grasps[..., :3, -1] = H_grasps[..., :3, -1] - mean
         ## rotate ##
-        pcl = np.einsum('mn,bn->bm',R, pcl)
-        xyz = np.einsum('mn,bn->bm',R, xyz)
+        pcl = np.einsum('mn,bn->bm', R, pcl)
+        xyz = np.einsum('mn,bn->bm', R, xyz)
         H_grasps = np.einsum('mn,bnk->bmk', H, H_grasps)
         #######################
 
         # Visualize
         if self.visualize:
-
             ## 3D matplotlib ##
             import matplotlib.pyplot as plt
 
             fig = plt.figure()
             ax = fig.add_subplot(projection='3d')
-            ax.scatter(pcl[:,0], pcl[:,1], pcl[:,2], c='r')
+            ax.scatter(pcl[:, 0], pcl[:, 1], pcl[:, 2], c='r')
 
             x_grasps = H_grasps[..., :3, -1]
-            ax.scatter(x_grasps[:,0], x_grasps[:,1], x_grasps[:,2], c='b')
+            ax.scatter(x_grasps[:, 0], x_grasps[:, 1], x_grasps[:, 2], c='b')
 
             ## sdf visualization ##
             n = 100
-            x = xyz[:n,:]
+            x = xyz[:n, :]
 
             x_sdf = sdf[:n]
-            x_sdf = 0.9*x_sdf/np.max(x_sdf)
+            x_sdf = 0.9 * x_sdf / np.max(x_sdf)
             c = np.zeros((n, 3))
             c[:, 1] = x_sdf
-            ax.scatter(x[:,0], x[:,1], x[:,2], c=c)
+            ax.scatter(x[:, 0], x[:, 1], x[:, 2], c=c)
 
             plt.show()
-            #plt.show(block=True)
 
         res = {'visual_context': torch.from_numpy(pcl).float(),
                'x_sdf': torch.from_numpy(xyz).float(),
@@ -620,15 +624,68 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
 
 if __name__ == '__main__':
 
-    ## Index conditioned dataset
-    dataset = AcronymAndSDFDataset(visualize=True, augmented_rotation=True, one_object=False)
+    # ## Index conditioned dataset
+    # dataset = AcronymAndSDFDataset(visualize=True, augmented_rotation=True, one_object=False)
 
-    ## Pointcloud conditioned dataset
-    dataset = PointcloudAcronymAndSDFDataset(visualize=True, augmented_rotation=True, one_object=False)
+    # ## Pointcloud conditioned dataset
+    # dataset = PointcloudAcronymAndSDFDataset(visualize=True, augmented_rotation=True, one_object=False)
 
-    ## Pointcloud conditioned dataset
-    dataset = PartialPointcloudAcronymAndSDFDataset(visualize=False, augmented_rotation=True, one_object=False)
+    ## Partial Pointcloud conditioned dataset with custom train and test files
+    # Get the directory of the current script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
 
-    train_dataloader = DataLoader(dataset, batch_size=10, shuffle=True)
-    for x,y in train_dataloader:
+    # Define the base path to the dataset directory
+    dataset_dir = os.path.join(script_dir, '../../../../grasp_diffusion_network/dataset_acronym_shapenetsem')
+
+    # Define paths to the grasp files within the dataset
+    train_file_relative = os.path.join(
+        dataset_dir,
+        'grasps/Mug_6a9b31e1298ca1109c515ccf0f61e75f_0.029998777830639544.h5'
+    )
+    test_file_relative = os.path.join(
+        dataset_dir,
+        'grasps/Mug_ba10400c108e5c3f54e1b6f41fdd78a_0.01695507616001961.h5'
+    )
+
+    # Ensure the paths are normalized
+    train_file_path = os.path.normpath(train_file_relative)
+    test_file_path = os.path.normpath(test_file_relative)
+
+    # Define the train and test files using the paths
+    train_files = [train_file_path]
+    test_files = [test_file_path]
+
+    # Instantiate the dataset with custom train files
+    train_dataset = PartialPointcloudAcronymAndSDFDataset(
+        visualize=False,
+        augmented_rotation=True,
+        one_object=False,
+        phase='train',
+        train_files=train_files
+    )
+
+    # Instantiate the dataset with custom test files
+    test_dataset = PartialPointcloudAcronymAndSDFDataset(
+        visualize=False,
+        augmented_rotation=True,
+        one_object=False,
+        phase='test',
+        test_files=test_files
+    )
+
+    # Create DataLoaders
+    train_dataloader = DataLoader(train_dataset, batch_size=10, shuffle=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=10, shuffle=False)
+
+    # Iterate over the train DataLoader
+    print("Training Data:")
+    for x, y in train_dataloader:
         print(x)
+        break  # Remove or adjust as needed
+
+    # Iterate over the test DataLoader
+    print("\nTesting Data:")
+    for x, y in test_dataloader:
+        print(x)
+        break  # Remove or adjust as needed
+
