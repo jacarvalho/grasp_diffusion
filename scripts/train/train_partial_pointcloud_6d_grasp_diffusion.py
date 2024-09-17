@@ -1,4 +1,5 @@
 import os
+import json
 import copy
 import configargparse
 from se3dif.utils import get_root_src
@@ -39,6 +40,8 @@ def parse_args():
 
     p.add_argument('--device',  type=str, default='cuda',)
     p.add_argument('--class_type', type=str, default='Mug')
+    
+    p.add_argument('--allowed_categories', type=str, default='Mug-v04', help='Just for using our splied dataset')
 
     opt = p.parse_args()
     return opt
@@ -65,23 +68,26 @@ def main(opt):
     else:
         device = torch.device('cpu')
         
-    # Define paths to the grasp files within the dataset
-    train_file_relative = os.path.join(
-        dataset_dir,
-        'grasps/Mug_6a9b31e1298ca1109c515ccf0f61e75f_0.029998777830639544.h5'
-    )
-    test_file_relative = os.path.join(
-        dataset_dir,
-        'grasps/Mug_ba10400c108e5c3f54e1b6f41fdd78a_0.01695507616001961.h5'
-    )
+    # Determine the JSON file path based on opt.allowed_categories
+    splits_dir = os.path.join(dataset_dir, 'splits')
+    json_file_name = f"{opt.allowed_categories}.json"
+    json_file_path = os.path.join(splits_dir, json_file_name)
+
+    # Load the JSON file content
+    with open(json_file_path, 'r') as json_file:
+        split_data = json.load(json_file)
+
+    # Extract training and testing file names from the JSON content
+    train_file_names = split_data.get('train', [])
+    test_file_names = split_data.get('test', [])
+
+    # Combine the base path with file names to get full paths
+    train_files = [os.path.join(dataset_dir, 'grasps', fname) for fname in train_file_names]
+    test_files = [os.path.join(dataset_dir, 'grasps', fname) for fname in test_file_names]
 
     # Ensure the paths are normalized
-    train_file_path = os.path.normpath(train_file_relative)
-    test_file_path = os.path.normpath(test_file_relative)
-
-    # Define the train and test files using the paths
-    train_files = [train_file_path]
-    test_files = [test_file_path]
+    train_files = [os.path.normpath(fpath) for fpath in train_files]
+    test_files = [os.path.normpath(fpath) for fpath in test_files]
 
     ## Dataset
     train_dataset = datasets.PartialPointcloudAcronymAndSDFDataset(
