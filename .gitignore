@@ -154,3 +154,4 @@ dmypy.json
 gifs/
 
 *copy*
+mesh_to_sdf/
