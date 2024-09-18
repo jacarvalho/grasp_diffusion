@@ -30,21 +30,28 @@ def parse_args():
     p.add_argument('--n_grasps', type=str, default='10')
     p.add_argument('--obj_class', type=str, default='Mug')
     p.add_argument('--allowed_categories', type=str, default='Mug-v00', help='Just for using our splied dataset')
-    p.add_argument('--split', type=str, default='test', help='Just for using our splied dataset')
+    p.add_argument('--split', type=str, choices=['test', 'train'], default='test', help='Using split dataset test or train')
+    p.add_argument('--model_from', type=str, choices=['pretrained_model', 'saving_folder'], default='saving_folder',help='Load model from given pretrained model or saving folder of trained model')
 
     opt = p.parse_args()
     return opt
 
 
-def get_approximated_grasp_diffusion_field(p, device='cpu'):
+def get_approximated_grasp_diffusion_field(p, device='cpu',model_from='saving_folder'):
     model_params = 'partial_grasp_dif'
     batch = 10
     ## Load model
-    model_args = {
-        'device': device,
-        # 'pretrained_model': model_params,
-        'saving_folder': saving_folder,
-    }
+    if model_from == 'pretrained_model':
+        model_args = {
+            'device': device,
+            'pretrained_model': model_params,
+        }
+    else:
+        model_args = {
+            'device': device,
+            'saving_folder': saving_folder,
+        }
+    ## read model params    
     if model_args['saving_folder'] is not None and model_params is 'partial_grasp_dif':
        model_args['params_dir'] = os.path.join(train_params_dir, 'multiobject_partialp_graspdif')  
     elif model_args['saving_folder'] is not None and model_params is 'grasp_dif_multi':
@@ -126,7 +133,7 @@ if __name__ == '__main__':
     print(f"Time taken to sample point cloud: {end_time - start_time:.4f} seconds")
     
     start_time = time.time()
-    generator, model = get_approximated_grasp_diffusion_field(P, device)
+    generator, model = get_approximated_grasp_diffusion_field(P, device, args.model_from)
     end_time = time.time()
     print(f"Time taken to set up grasp diffusion field: {end_time - start_time:.4f} seconds")
 
