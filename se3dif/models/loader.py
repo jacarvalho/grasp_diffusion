@@ -2,6 +2,7 @@ import os
 import torch
 import torch.nn as nn
 import numpy as np
+import glob
 
 from se3dif import models
 
@@ -16,6 +17,11 @@ def load_model(args):
                                                                       args['pretrained_model']))
         args["NetworkArch"] = model_args["NetworkArch"]
         args["NetworkSpecs"] = model_args["NetworkSpecs"]
+    elif 'saving_folder' in args:
+        model_args = load_experiment_specifications(args['params_dir'])
+        args["NetworkArch"] = model_args["NetworkArch"]
+        args["NetworkSpecs"] = model_args["NetworkSpecs"]
+        
 
     if args['NetworkArch'] == 'GraspDiffusion':
         model = load_grasp_diffusion(args)
@@ -24,8 +30,13 @@ def load_model(args):
 
 
     if 'pretrained_model' in args:
-        model_path = os.path.join(pretrained_models_dir, args['pretrained_model'], 'model.pth')
-
+        # model_path = os.path.join(pretrained_models_dir, args['pretrained_model'], 'model.pth')
+        # model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+        model_dir = os.path.join(pretrained_models_dir, args['pretrained_model'])
+        model_files = glob.glob(os.path.join(model_dir, 'model*.pth'))
+        if not model_files:
+            raise FileNotFoundError(f"No model files starting with 'model' found in {model_dir}")
+        model_path = max(model_files, key=os.path.getmtime)
         model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
 
         if args['device'] != 'cpu':

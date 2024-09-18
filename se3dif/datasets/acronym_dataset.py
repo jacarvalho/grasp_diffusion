@@ -88,13 +88,61 @@ class AcronymGrasps():
 
 
 class AcronymGraspsDirectory():
+    def __init__(self, filename=get_grasps_src(), data_type='Mug',dataset_dir=None, allowed_categories=None, split='test'):
+        if dataset_dir is None and allowed_categories is None:
+            grasps_files = sorted(glob.glob(filename + '/' + data_type + '/*.h5'))
+
+            self.avail_obj = []
+            for grasp_file in grasps_files:
+                self.avail_obj.append(AcronymGrasps(grasp_file))
+                
+            # Determine the JSON file path based on opt.allowed_categories
+            splits_dir = os.path.join(dataset_dir, 'splits')
+            json_file_name = f"{allowed_categories}.json"
+            json_file_path = os.path.join(splits_dir, json_file_name)
+            
+        # Using splited dataset
+        else:
+            # Determine the JSON file path based on opt.allowed_categories
+            splits_dir = os.path.join(dataset_dir, 'splits')
+            json_file_name = f"{allowed_categories}.json"
+            json_file_path = os.path.join(splits_dir, json_file_name)
+
+            # Load the JSON file content
+            with open(json_file_path, 'r') as json_file:
+                split_data = json.load(json_file)
+
+            # Extract training and testing file names from the JSON content
+            if split == 'train':
+                train_file_names = split_data.get('train', [])
+                train_files = [os.path.join(dataset_dir, 'grasps', fname) for fname in train_file_names]
+                train_files = [os.path.normpath(fpath) for fpath in train_files]
+                self.avail_obj_train = []
+                for grasp_file in train_files:
+                    self.avail_obj_train.append(AcronymGrasps(grasp_file))
+            elif split == 'test':
+                test_file_names = split_data.get('test', [])
+                test_files = [os.path.join(dataset_dir, 'grasps', fname) for fname in test_file_names]
+                test_files = [os.path.normpath(fpath) for fpath in test_files]
+                self.avail_obj_test = []
+                for grasp_file in test_files:
+                    self.avail_obj_test.append(AcronymGrasps(grasp_file))
+            
+
+
+class AcronymGraspsDirectory_splited():
     def __init__(self, filename=get_grasps_src(), data_type='Mug'):
 
-        grasps_files = sorted(glob.glob(filename + '/' + data_type + '/*.h5'))
+        # grasps_files = sorted(glob.glob(filename + '/' + data_type + '/*.h5'))
 
-        self.avail_obj = []
-        for grasp_file in grasps_files:
-            self.avail_obj.append(AcronymGrasps(grasp_file))
+        # self.avail_obj = []
+        # for grasp_file in grasps_files:
+        #     self.avail_obj.append(AcronymGrasps(grasp_file))
+        
+        # only for test 
+        # grasp_file = '/home/qiao/Projects/GraspDiffusionNetwork/grasp_diffusion_network/dataset_acronym_shapenetsem/grasps/Mug_6a9b31e1298ca1109c515ccf0f61e75f_0.029998777830639544.h5'
+        grasp_file = '/home/qiao/Projects/GraspDiffusionNetwork/grasp_diffusion_network/dataset_acronym_shapenetsem/grasps/Mug_cf777e14ca2c7a19b4aad3cc5ce7ee8_0.002438413955982699.h5'
+        self.avail_obj = [AcronymGrasps(grasp_file)]
 
 
 class AcronymAndSDFDataset(Dataset):

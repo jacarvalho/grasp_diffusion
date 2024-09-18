@@ -16,8 +16,9 @@ from se3dif.trainer.learning_rate_scheduler import get_learning_rate_schedules
 
 base_dir = os.path.abspath(os.path.dirname(__file__))
 root_dir = os.path.abspath(os.path.dirname(__file__ + '/../../../../../'))
-# Define the base path to the dataset directory
-dataset_dir = os.path.join(base_dir, '../../../../grasp_diffusion_network/dataset_acronym_shapenetsem')
+# Define the base path to the splited dataset directory
+# dataset_dir = os.path.join(base_dir, '../../../../grasp_diffusion_network/dataset_acronym_shapenetsem')
+dataset_dir = os.path.join(root_dir, 'grasp_diffusion_network/dataset_acronym_shapenetsem')
 
 def parse_args():
     p = configargparse.ArgumentParser()
@@ -41,7 +42,7 @@ def parse_args():
     p.add_argument('--device',  type=str, default='cuda',)
     p.add_argument('--class_type', type=str, default='Mug')
     
-    p.add_argument('--allowed_categories', type=str, default='Mug-v04', help='Just for using our splied dataset')
+    p.add_argument('--allowed_categories', type=str, default='Mug-v00', help='Just for using our splied dataset')
 
     opt = p.parse_args()
     return opt
@@ -84,8 +85,6 @@ def main(opt):
     # Combine the base path with file names to get full paths
     train_files = [os.path.join(dataset_dir, 'grasps', fname) for fname in train_file_names]
     test_files = [os.path.join(dataset_dir, 'grasps', fname) for fname in test_file_names]
-
-    # Ensure the paths are normalized
     train_files = [os.path.normpath(fpath) for fpath in train_files]
     test_files = [os.path.normpath(fpath) for fpath in test_files]
 
