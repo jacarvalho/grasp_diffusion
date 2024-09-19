@@ -75,10 +75,7 @@ def sample_pointcloud(obj_id=0, obj_class='Mug', dataset_dir=None, allowed_categ
     
     # for using our splitted dataset
     acronym_grasps = AcronymGraspsDirectory(data_type=obj_class,dataset_dir=dataset_dir, allowed_categories=allowed_categories, split=split)
-    if split == 'test':
-        mesh = acronym_grasps.avail_obj_test[obj_id].load_mesh()
-    elif split == 'train':
-        mesh = acronym_grasps.avail_obj_train[obj_id].load_mesh()
+    mesh = acronym_grasps.avail_obj[obj_id].load_mesh()
 
     centroid = mesh.centroid
     H = np.eye(4)
@@ -105,7 +102,7 @@ def sample_pointcloud(obj_id=0, obj_class='Mug', dataset_dir=None, allowed_categ
     mesh.apply_transform(H)
 
     if dataset_dir is not None:
-        return P, mesh, len(acronym_grasps.avail_obj_test)
+        return P, mesh, len(acronym_grasps.avail_obj)
     return P, mesh
 
 
@@ -127,7 +124,7 @@ if __name__ == '__main__':
     start_time = time.time()
     P, mesh, num_objs = sample_pointcloud(obj_id, obj_class,dataset_dir, args.allowed_categories, args.split)
     print('Dataset split: {}'.format(args.split))
-    print('Number of object from datsset: {}'.format(num_objs))
+    print('Number of objects from datsset: {}'.format(num_objs))
     print('Selected object: {}'.format(obj_id))
     end_time = time.time()
     print(f"Time taken to sample point cloud: {end_time - start_time:.4f} seconds")
