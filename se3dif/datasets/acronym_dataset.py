@@ -761,26 +761,26 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         self.grasps_dir = os.path.join(self.data_dir, 'grasps')
 
         # Collect grasp file paths without opening them
-        self.grasp_files = []
-        for class_type_i in class_type:
-            cls_grasps_files = sorted(glob.glob(os.path.join(self.grasps_dir, class_type_i, '*.h5')))
-            self.grasp_files.extend(cls_grasps_files)
+        # self.grasp_files = []
+        # for class_type_i in class_type:
+        #     cls_grasps_files = sorted(glob.glob(os.path.join(self.grasps_dir, class_type_i, '*.h5')))
+        #     self.grasp_files.extend(cls_grasps_files)
 
         # Handle custom train and test files
-        if train_files is not None:
+        if train_files is not None and test_files is None:
             self.train_grasp_files = train_files
-        else:
-            self.train_grasp_files = self.grasp_files
+        # elif train_files is None and test_files is None:
+        #     self.train_grasp_files = self.grasp_files
 
-        if test_files is not None:
+        if test_files is not None and train_files is None:
             self.test_grasp_files = test_files
-        else:
-            # Split Train/Test if test_files not provided
-            n = len(self.grasp_files)
-            train_size = int(n * 0.9)
-            test_size = n - train_size
-            self.train_grasp_files, self.test_grasp_files = torch.utils.data.random_split(
-                self.grasp_files, [train_size, test_size])
+        # else:
+        #     # Split Train/Test if test_files not provided
+        #     n = len(self.grasp_files)
+        #     train_size = int(n * 0.9)
+        #     test_size = n - train_size
+        #     self.train_grasp_files, self.test_grasp_files = torch.utils.data.random_split(
+        #         self.grasp_files, [train_size, test_size])
 
         # Set dataset phase and length
         self.phase = phase
