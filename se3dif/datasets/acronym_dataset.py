@@ -3,6 +3,7 @@ import copy
 import time
 
 import numpy as np
+import psutil
 import trimesh
 
 from scipy.stats import special_ortho_group
@@ -29,10 +30,79 @@ logger = logging.getLogger("trimesh")
 logger.setLevel(logging.ERROR)
 
 
+# class AcronymGrasps():
+#     def __init__(self, filename):
+
+#         scale = None
+#         if filename.endswith(".json"):
+#             data = json.load(open(filename, "r"))
+#             self.mesh_fname = data["object"].decode('utf-8')
+#             self.mesh_type = self.mesh_fname.split('/')[1]
+#             self.mesh_id = self.mesh_fname.split('/')[-1].split('.')[0]
+#             self.mesh_scale = data["object_scale"] if scale is None else scale
+#         elif filename.endswith(".h5"):
+#             data = h5py.File(filename, "r")
+#             self.mesh_fname = data["object/file"][()].decode('utf-8')
+#             self.mesh_type = self.mesh_fname.split('/')[1]
+#             self.mesh_id = self.mesh_fname.split('/')[-1].split('.')[0]
+#             self.mesh_scale = data["object/scale"][()] if scale is None else scale
+#         else:
+#             raise RuntimeError("Unknown file ending:", filename)
+
+#         self.grasps, self.success = self.load_grasps(filename)
+#         good_idxs = np.argwhere(self.success==1)[:,0]
+#         bad_idxs  = np.argwhere(self.success==0)[:,0]
+#         self.good_grasps = self.grasps[good_idxs,...]
+#         self.bad_grasps  = self.grasps[bad_idxs,...]
+
+#     def load_grasps(self, filename):
+#         """Load transformations and qualities of grasps from a JSON file from the dataset.
+
+#         Args:
+#             filename (str): HDF5 or JSON file name.
+
+#         Returns:
+#             np.ndarray: Homogenous matrices describing the grasp poses. 2000 x 4 x 4.
+#             np.ndarray: List of binary values indicating grasp success in simulation.
+#         """
+#         if filename.endswith(".json"):
+#             data = json.load(open(filename, "r"))
+#             T = np.array(data["transforms"])
+#             success = np.array(data["quality_flex_object_in_gripper"])
+#         elif filename.endswith(".h5"):
+#             data = h5py.File(filename, "r")
+#             T = np.array(data["grasps/transforms"])
+#             success = np.array(data["grasps/qualities/flex/object_in_gripper"])
+#         else:
+#             raise RuntimeError("Unknown file ending:", filename)
+#         return T, success
+
+#     def load_mesh(self):
+#         mesh_path_file = os.path.join(get_data_src(), self.mesh_fname)
+
+#         mesh = trimesh.load(mesh_path_file,  file_type='obj', force='mesh')
+
+#         mesh.apply_scale(self.mesh_scale)
+#         if type(mesh) == trimesh.scene.scene.Scene:
+#             mesh = trimesh.util.concatenate(mesh.dump())
+#         return mesh
+
 class AcronymGrasps():
     def __init__(self, filename):
+        self.filename = filename  # Store filename for later use
+        self.mesh_fname = None
+        self.mesh_type = None
+        self.mesh_id = None
+        self.mesh_scale = None
+        self.grasps = None
+        self.success = None
+        self.good_grasps = None
+        self.bad_grasps = None
 
+    def load_data(self):
         scale = None
+        filename = self.filename
+
         if filename.endswith(".json"):
             data = json.load(open(filename, "r"))
             self.mesh_fname = data["object"].decode('utf-8')
@@ -49,13 +119,13 @@ class AcronymGrasps():
             raise RuntimeError("Unknown file ending:", filename)
 
         self.grasps, self.success = self.load_grasps(filename)
-        good_idxs = np.argwhere(self.success==1)[:,0]
-        bad_idxs  = np.argwhere(self.success==0)[:,0]
-        self.good_grasps = self.grasps[good_idxs,...]
-        self.bad_grasps  = self.grasps[bad_idxs,...]
+        good_idxs = np.argwhere(self.success == 1)[:, 0]
+        bad_idxs = np.argwhere(self.success == 0)[:, 0]
+        self.good_grasps = self.grasps[good_idxs, ...]
+        self.bad_grasps = self.grasps[bad_idxs, ...]
 
     def load_grasps(self, filename):
-        """Load transformations and qualities of grasps from a JSON file from the dataset.
+        """Load transformations and qualities of grasps from a JSON or HDF5 file.
 
         Args:
             filename (str): HDF5 or JSON file name.
@@ -77,9 +147,12 @@ class AcronymGrasps():
         return T, success
 
     def load_mesh(self):
+        if self.mesh_fname is None:
+            self.load_data()
+
         mesh_path_file = os.path.join(get_data_src(), self.mesh_fname)
 
-        mesh = trimesh.load(mesh_path_file,  file_type='obj', force='mesh')
+        mesh = trimesh.load(mesh_path_file, file_type='obj', force='mesh')
 
         mesh.apply_scale(self.mesh_scale)
         if type(mesh) == trimesh.scene.scene.Scene:
@@ -477,11 +550,201 @@ class PointcloudAcronymAndSDFDataset(Dataset):
                'x_ene_pos': torch.from_numpy(H_grasps).float(),
                'scale': torch.Tensor([self.scale]).float()}
 
+        del pcl, xyz, H_grasps, sdf, grasps_obj, R, H, mean, x_grasps, x_sdf, c, x, n, sdf_dict, loc, scale, mesh, mesh_sample, sdf_file, mesh_fname, mesh_scale, filename, mesh_name, mesh_type, rix
         return res, {'sdf': torch.from_numpy(sdf).float()}
 
     def __getitem__(self, index):
         'Generates one sample of data'
         return self._get_item(index)
+
+
+# class PartialPointcloudAcronymAndSDFDataset(Dataset):
+#     'DataLoader for training DeepSDF with a Rotation Invariant Encoder model'
+#     def __init__(self, class_type=['Cup', 'Mug', 'Fork', 'Hat', 'Bottle'],
+#                  se3=False, phase='train', one_object=False,
+#                  n_pointcloud=1000, n_density=200, n_coords=1000,
+#                  augmented_rotation=True, visualize=False, split=True,
+#                  train_files=None, test_files=None):
+
+#         self.class_type = class_type
+#         self.data_dir = get_data_src()
+
+#         self.grasps_dir = os.path.join(self.data_dir, 'grasps')
+
+#         self.grasp_files = []
+#         for class_type_i in class_type:
+#             cls_grasps_files = sorted(glob.glob(self.grasps_dir + '/' + class_type_i + '/*.h5'))
+
+#             for grasp_file in cls_grasps_files:
+#                 g_obj = AcronymGrasps(grasp_file)
+
+#                 ## Grasp File ##
+#                 if g_obj.good_grasps.shape[0] > 0:
+#                     self.grasp_files.append(grasp_file)
+
+#         ## Handle custom train and test files
+#         if train_files is not None:
+#             self.train_grasp_files = train_files
+#         else:
+#             self.train_grasp_files = self.grasp_files
+
+#         if test_files is not None:
+#             self.test_grasp_files = test_files
+#         else:
+#             ## Split Train/Test if test_files not provided
+#             n = len(self.grasp_files)
+#             train_size = int(n * 0.9)
+#             test_size = n - train_size
+#             self.train_grasp_files, self.test_grasp_files = torch.utils.data.random_split(
+#                 self.grasp_files, [train_size, test_size])
+
+#         ## Set dataset phase and length
+#         self.phase = phase
+#         if self.phase == 'train':
+#             self.len = len(self.train_grasp_files)
+#         else:
+#             self.len = len(self.test_grasp_files)
+
+#         self.n_pointcloud = n_pointcloud
+#         self.n_density = n_density
+#         self.n_occ = n_coords
+
+#         ## Variables on Data
+#         self.one_object = one_object
+#         self.augmented_rotation = augmented_rotation
+#         self.se3 = se3
+
+#         ## Visualization
+#         self.visualize = visualize
+#         self.scale = 8.
+
+#         ## Sampler
+#         self.scan_pointcloud = ScanPointcloud()
+
+#     def __len__(self):
+#         return self.len
+
+#     def _get_grasps(self, grasp_obj):
+#         try:
+#             rix = np.random.randint(low=0, high=grasp_obj.good_grasps.shape[0], size=self.n_density)
+#         except:
+#             print('Error in sampling grasps.')
+#         H_grasps = grasp_obj.good_grasps[rix, ...]
+#         return H_grasps
+
+#     def _get_sdf(self, grasp_obj, grasp_file):
+#         mesh_fname = grasp_obj.mesh_fname
+#         mesh_scale = grasp_obj.mesh_scale
+
+#         mesh_type = mesh_fname.split('/')[1]
+#         mesh_name = mesh_fname.split('/')[-1]
+#         filename = mesh_name.split('.obj')[0]
+#         sdf_file = os.path.join(self.data_dir, 'sdf', mesh_type, filename + '.json')
+
+#         with open(sdf_file, 'rb') as handle:
+#             sdf_dict = pickle.load(handle)
+
+#         loc = sdf_dict['loc']
+#         scale = sdf_dict['scale']
+#         xyz = (sdf_dict['xyz'] + loc) * scale * mesh_scale
+#         rix = np.random.permutation(xyz.shape[0])
+#         xyz = xyz[rix[:self.n_occ], :]
+#         sdf = sdf_dict['sdf'][rix[:self.n_occ]] * scale * mesh_scale
+#         return xyz, sdf
+
+#     def _get_mesh_pcl(self, grasp_obj):
+#         mesh = grasp_obj.load_mesh()
+#         ## 1. Mesh Centroid ##
+#         centroid = mesh.centroid
+#         H = np.eye(4)
+#         H[:3, -1] = -centroid
+#         mesh.apply_transform(H)
+#         ######################
+#         P = self.scan_pointcloud.get_hq_scan_view(mesh)
+#         P += centroid
+#         try:
+#             rix = np.random.randint(low=0, high=P.shape[0], size=self.n_pointcloud)
+#         except:
+#             print('Error in sampling point cloud.')
+#         return P[rix, :]
+
+#     def _get_item(self, index):
+#         if self.one_object:
+#             index = 0
+
+#         ## Load Files ##
+#         if self.phase == 'train':
+#             grasp_file = self.train_grasp_files[index]
+#         else:
+#             grasp_file = self.test_grasp_files[index]
+
+#         grasps_obj = AcronymGrasps(grasp_file)
+
+#         ## SDF
+#         xyz, sdf = self._get_sdf(grasps_obj, grasp_file)
+
+#         ## PointCloud
+#         pcl = self._get_mesh_pcl(grasps_obj)
+
+#         ## Grasps good/bad
+#         H_grasps = self._get_grasps(grasps_obj)
+
+#         ## rescale, rotate and translate ##
+#         xyz = xyz * self.scale
+#         sdf = sdf * self.scale
+#         pcl = pcl * self.scale
+#         H_grasps[..., :3, -1] = H_grasps[..., :3, -1] * self.scale
+#         ## Random rotation ##
+#         R = special_ortho_group.rvs(3)
+#         H = np.eye(4)
+#         H[:3, :3] = R
+#         mean = np.mean(pcl, 0)
+#         ## translate ##
+#         xyz = xyz - mean
+#         pcl = pcl - mean
+#         H_grasps[..., :3, -1] = H_grasps[..., :3, -1] - mean
+#         ## rotate ##
+#         pcl = np.einsum('mn,bn->bm', R, pcl)
+#         xyz = np.einsum('mn,bn->bm', R, xyz)
+#         H_grasps = np.einsum('mn,bnk->bmk', H, H_grasps)
+#         #######################
+
+#         # Visualize
+#         if self.visualize:
+#             ## 3D matplotlib ##
+#             import matplotlib.pyplot as plt
+
+#             fig = plt.figure()
+#             ax = fig.add_subplot(projection='3d')
+#             ax.scatter(pcl[:, 0], pcl[:, 1], pcl[:, 2], c='r')
+
+#             x_grasps = H_grasps[..., :3, -1]
+#             ax.scatter(x_grasps[:, 0], x_grasps[:, 1], x_grasps[:, 2], c='b')
+
+#             ## sdf visualization ##
+#             n = 100
+#             x = xyz[:n, :]
+
+#             x_sdf = sdf[:n]
+#             x_sdf = 0.9 * x_sdf / np.max(x_sdf)
+#             c = np.zeros((n, 3))
+#             c[:, 1] = x_sdf
+#             ax.scatter(x[:, 0], x[:, 1], x[:, 2], c=c)
+
+#             plt.show()
+
+#         res = {'visual_context': torch.from_numpy(pcl).float(),
+#                'x_sdf': torch.from_numpy(xyz).float(),
+#                'x_ene_pos': torch.from_numpy(H_grasps).float(),
+#                'scale': torch.Tensor([self.scale]).float()}
+        
+#         process = psutil.Process(os.getpid())
+        
+#         return res, {'sdf': torch.from_numpy(sdf).float()}
+
+#     def __getitem__(self, index):
+#         'Generates one sample of data'
+#         return self._get_item(index)
 
 
 class PartialPointcloudAcronymAndSDFDataset(Dataset):
@@ -497,18 +760,13 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
 
         self.grasps_dir = os.path.join(self.data_dir, 'grasps')
 
+        # Collect grasp file paths without opening them
         self.grasp_files = []
         for class_type_i in class_type:
-            cls_grasps_files = sorted(glob.glob(self.grasps_dir + '/' + class_type_i + '/*.h5'))
+            cls_grasps_files = sorted(glob.glob(os.path.join(self.grasps_dir, class_type_i, '*.h5')))
+            self.grasp_files.extend(cls_grasps_files)
 
-            for grasp_file in cls_grasps_files:
-                g_obj = AcronymGrasps(grasp_file)
-
-                ## Grasp File ##
-                if g_obj.good_grasps.shape[0] > 0:
-                    self.grasp_files.append(grasp_file)
-
-        ## Handle custom train and test files
+        # Handle custom train and test files
         if train_files is not None:
             self.train_grasp_files = train_files
         else:
@@ -517,14 +775,14 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         if test_files is not None:
             self.test_grasp_files = test_files
         else:
-            ## Split Train/Test if test_files not provided
+            # Split Train/Test if test_files not provided
             n = len(self.grasp_files)
             train_size = int(n * 0.9)
             test_size = n - train_size
             self.train_grasp_files, self.test_grasp_files = torch.utils.data.random_split(
                 self.grasp_files, [train_size, test_size])
 
-        ## Set dataset phase and length
+        # Set dataset phase and length
         self.phase = phase
         if self.phase == 'train':
             self.len = len(self.train_grasp_files)
@@ -535,16 +793,16 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         self.n_density = n_density
         self.n_occ = n_coords
 
-        ## Variables on Data
+        # Variables on Data
         self.one_object = one_object
         self.augmented_rotation = augmented_rotation
         self.se3 = se3
 
-        ## Visualization
+        # Visualization
         self.visualize = visualize
         self.scale = 8.
 
-        ## Sampler
+        # Sampler
         self.scan_pointcloud = ScanPointcloud()
 
     def __len__(self):
@@ -553,12 +811,13 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
     def _get_grasps(self, grasp_obj):
         try:
             rix = np.random.randint(low=0, high=grasp_obj.good_grasps.shape[0], size=self.n_density)
+            H_grasps = grasp_obj.good_grasps[rix, ...]
         except:
             print('Error in sampling grasps.')
-        H_grasps = grasp_obj.good_grasps[rix, ...]
+            raise ValueError("No valid grasps available.")
         return H_grasps
 
-    def _get_sdf(self, grasp_obj, grasp_file):
+    def _get_sdf(self, grasp_obj):
         mesh_fname = grasp_obj.mesh_fname
         mesh_scale = grasp_obj.mesh_scale
 
@@ -580,66 +839,75 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
 
     def _get_mesh_pcl(self, grasp_obj):
         mesh = grasp_obj.load_mesh()
-        ## 1. Mesh Centroid ##
+        # 1. Mesh Centroid
         centroid = mesh.centroid
         H = np.eye(4)
         H[:3, -1] = -centroid
         mesh.apply_transform(H)
-        ######################
+        # Generate point cloud
         P = self.scan_pointcloud.get_hq_scan_view(mesh)
         P += centroid
         try:
             rix = np.random.randint(low=0, high=P.shape[0], size=self.n_pointcloud)
         except:
             print('Error in sampling point cloud.')
+            raise ValueError("Error in sampling point cloud.")
         return P[rix, :]
 
     def _get_item(self, index):
         if self.one_object:
             index = 0
 
-        ## Load Files ##
+        # Load Files
         if self.phase == 'train':
             grasp_file = self.train_grasp_files[index]
         else:
             grasp_file = self.test_grasp_files[index]
 
+        # Open the h5 file here instead of __init__
         grasps_obj = AcronymGrasps(grasp_file)
+        grasps_obj.load_data()
 
-        ## SDF
-        xyz, sdf = self._get_sdf(grasps_obj, grasp_file)
+        # Check if there are good grasps
+        if grasps_obj.good_grasps.shape[0] == 0:
+            # Skip this sample or handle it appropriately
+            # Here, we'll raise an exception to indicate invalid data
+            raise ValueError(f"No good grasps in file: {grasp_file}")
 
-        ## PointCloud
+        # SDF
+        xyz, sdf = self._get_sdf(grasps_obj)
+
+        # PointCloud
         pcl = self._get_mesh_pcl(grasps_obj)
 
-        ## Grasps good/bad
+        # Grasps good/bad
         H_grasps = self._get_grasps(grasps_obj)
 
-        ## rescale, rotate and translate ##
+        # Rescale, rotate and translate
         xyz = xyz * self.scale
         sdf = sdf * self.scale
         pcl = pcl * self.scale
         H_grasps[..., :3, -1] = H_grasps[..., :3, -1] * self.scale
-        ## Random rotation ##
+
+        # Random rotation
         R = special_ortho_group.rvs(3)
         H = np.eye(4)
         H[:3, :3] = R
         mean = np.mean(pcl, 0)
-        ## translate ##
+
+        # Translate
         xyz = xyz - mean
         pcl = pcl - mean
         H_grasps[..., :3, -1] = H_grasps[..., :3, -1] - mean
-        ## rotate ##
+
+        # Rotate
         pcl = np.einsum('mn,bn->bm', R, pcl)
         xyz = np.einsum('mn,bn->bm', R, xyz)
         H_grasps = np.einsum('mn,bnk->bmk', H, H_grasps)
-        #######################
 
-        # Visualize
+        # Visualization
         if self.visualize:
-            ## 3D matplotlib ##
             import matplotlib.pyplot as plt
-
             fig = plt.figure()
             ax = fig.add_subplot(projection='3d')
             ax.scatter(pcl[:, 0], pcl[:, 1], pcl[:, 2], c='r')
@@ -647,16 +915,14 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
             x_grasps = H_grasps[..., :3, -1]
             ax.scatter(x_grasps[:, 0], x_grasps[:, 1], x_grasps[:, 2], c='b')
 
-            ## sdf visualization ##
+            # SDF visualization
             n = 100
             x = xyz[:n, :]
-
             x_sdf = sdf[:n]
             x_sdf = 0.9 * x_sdf / np.max(x_sdf)
             c = np.zeros((n, 3))
             c[:, 1] = x_sdf
             ax.scatter(x[:, 0], x[:, 1], x[:, 2], c=c)
-
             plt.show()
 
         res = {'visual_context': torch.from_numpy(pcl).float(),
@@ -668,8 +934,13 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
 
     def __getitem__(self, index):
         'Generates one sample of data'
-        return self._get_item(index)
-
+        try:
+            return self._get_item(index)
+        except ValueError as e:
+            # Handle the case when there is no valid data
+            print(e)
+            # For simplicity, raise the exception to let DataLoader handle it
+            raise e
 
 if __name__ == '__main__':
 
