@@ -111,11 +111,16 @@ class AcronymGrasps():
             self.mesh_id = self.mesh_fname.split('/')[-1].split('.')[0]
             self.mesh_scale = data["object_scale"] if scale is None else scale
         elif filename.endswith(".h5"):
-            data = h5py.File(filename, "r")
-            self.mesh_fname = data["object/file"][()].decode('utf-8')
-            self.mesh_type = self.mesh_fname.split('/')[1]
-            self.mesh_id = self.mesh_fname.split('/')[-1].split('.')[0]
-            self.mesh_scale = data["object/scale"][()] if scale is None else scale
+            with h5py.File(filename, "r") as data:
+                self.mesh_fname = data["object/file"][()].decode('utf-8')
+                self.mesh_type = self.mesh_fname.split('/')[1]
+                self.mesh_id = self.mesh_fname.split('/')[-1].split('.')[0]
+                self.mesh_scale = data["object/scale"][()] if scale is None else scale
+            # data = h5py.File(filename, "r")
+            # self.mesh_fname = data["object/file"][()].decode('utf-8')
+            # self.mesh_type = self.mesh_fname.split('/')[1]
+            # self.mesh_id = self.mesh_fname.split('/')[-1].split('.')[0]
+            # self.mesh_scale = data["object/scale"][()] if scale is None else scale
         else:
             raise RuntimeError("Unknown file ending:", filename)
 
@@ -142,9 +147,12 @@ class AcronymGrasps():
             T = np.array(data["transforms"])
             success = np.array(data["quality_flex_object_in_gripper"])
         elif filename.endswith(".h5"):
-            data = h5py.File(filename, "r")
-            T = np.array(data["grasps/transforms"])
-            success = np.array(data["grasps/qualities/flex/object_in_gripper"])
+            with h5py.File(filename, "r") as data:
+                T = np.array(data["grasps/transforms"])
+                success = np.array(data["grasps/qualities/flex/object_in_gripper"])
+            # data = h5py.File(filename, "r")
+            # T = np.array(data["grasps/transforms"])
+            # success = np.array(data["grasps/qualities/flex/object_in_gripper"])
         else:
             raise RuntimeError("Unknown file ending:", filename)
         
