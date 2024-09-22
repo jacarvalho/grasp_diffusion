@@ -1,3 +1,4 @@
+import gc
 import glob
 import copy
 import time
@@ -123,6 +124,8 @@ class AcronymGrasps():
         bad_idxs = np.argwhere(self.success == 0)[:, 0]
         self.good_grasps = self.grasps[good_idxs, ...]
         self.bad_grasps = self.grasps[bad_idxs, ...]
+        
+        del data, filename
 
     def load_grasps(self, filename):
         """Load transformations and qualities of grasps from a JSON or HDF5 file.
@@ -144,6 +147,8 @@ class AcronymGrasps():
             success = np.array(data["grasps/qualities/flex/object_in_gripper"])
         else:
             raise RuntimeError("Unknown file ending:", filename)
+        
+        del data, filename
         return T, success
 
     def load_mesh(self):
@@ -157,6 +162,7 @@ class AcronymGrasps():
         mesh.apply_scale(self.mesh_scale)
         if type(mesh) == trimesh.scene.scene.Scene:
             mesh = trimesh.util.concatenate(mesh.dump())
+        del mesh_path_file
         return mesh
 
 
@@ -201,22 +207,7 @@ class AcronymGraspsDirectory():
                 self.avail_obj_test = []
                 for grasp_file in test_files:
                     self.avail_obj.append(AcronymGrasps(grasp_file))
-            
-
-
-class AcronymGraspsDirectory_splited():
-    def __init__(self, filename=get_grasps_src(), data_type='Mug'):
-
-        # grasps_files = sorted(glob.glob(filename + '/' + data_type + '/*.h5'))
-
-        # self.avail_obj = []
-        # for grasp_file in grasps_files:
-        #     self.avail_obj.append(AcronymGrasps(grasp_file))
-        
-        # only for test 
-        # grasp_file = '/home/qiao/Projects/GraspDiffusionNetwork/grasp_diffusion_network/dataset_acronym_shapenetsem/grasps/Mug_6a9b31e1298ca1109c515ccf0f61e75f_0.029998777830639544.h5'
-        grasp_file = '/home/qiao/Projects/GraspDiffusionNetwork/grasp_diffusion_network/dataset_acronym_shapenetsem/grasps/Mug_cf777e14ca2c7a19b4aad3cc5ce7ee8_0.002438413955982699.h5'
-        self.avail_obj = [AcronymGrasps(grasp_file)]
+        del json_file_path, splits_dir, json_file_name, split_data, train_file_names, train_files, test_file_names, test_files
 
 
 class AcronymAndSDFDataset(Dataset):
@@ -439,6 +430,8 @@ class PointcloudAcronymAndSDFDataset(Dataset):
         ## Visualization
         self.visualize = visualize
         self.scale = 8.
+        
+        del n, train_size, test_size
 
     def __len__(self):
         return self.len
@@ -755,10 +748,10 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
                  augmented_rotation=True, visualize=False, split=True,
                  train_files=None, test_files=None):
 
-        self.class_type = class_type
+        # self.class_type = class_type
         self.data_dir = get_data_src()
 
-        self.grasps_dir = os.path.join(self.data_dir, 'grasps')
+        # self.grasps_dir = os.path.join(self.data_dir, 'grasps')
 
         # Collect grasp file paths without opening them
         # self.grasp_files = []
@@ -804,6 +797,8 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
 
         # Sampler
         self.scan_pointcloud = ScanPointcloud()
+        
+        del class_type, se3, phase, one_object, n_pointcloud, n_density, n_coords, augmented_rotation, visualize, split, train_files, test_files
 
     def __len__(self):
         return self.len
@@ -815,6 +810,7 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         except:
             print('Error in sampling grasps.')
             raise ValueError("No valid grasps available.")
+        del rix
         return H_grasps
 
     def _get_sdf(self, grasp_obj):
@@ -835,6 +831,8 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         rix = np.random.permutation(xyz.shape[0])
         xyz = xyz[rix[:self.n_occ], :]
         sdf = sdf_dict['sdf'][rix[:self.n_occ]] * scale * mesh_scale
+        
+        del rix, sdf_dict, loc, scale, mesh_type, mesh_name, filename, sdf_file
         return xyz, sdf
 
     def _get_mesh_pcl(self, grasp_obj):
@@ -851,7 +849,7 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
             rix = np.random.randint(low=0, high=P.shape[0], size=self.n_pointcloud)
         except:
             print('Error in sampling point cloud.')
-            raise ValueError("Error in sampling point cloud.")
+
         return P[rix, :]
 
     def _get_item(self, index):
@@ -929,7 +927,7 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
                'x_sdf': torch.from_numpy(xyz).float(),
                'x_ene_pos': torch.from_numpy(H_grasps).float(),
                'scale': torch.Tensor([self.scale]).float()}
-
+        del pcl, xyz, H_grasps, grasps_obj, R, H, mean
         return res, {'sdf': torch.from_numpy(sdf).float()}
 
     def __getitem__(self, index):
