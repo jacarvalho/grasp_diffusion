@@ -2,6 +2,7 @@ import os
 import json
 import copy
 import configargparse
+import numpy as np
 from se3dif.utils import get_root_src
 
 import torch
@@ -13,12 +14,14 @@ from se3dif.models import loader
 from se3dif.utils import load_experiment_specifications
 
 from se3dif.trainer.learning_rate_scheduler import get_learning_rate_schedules
+import torch.multiprocessing as mp
 
 base_dir = os.path.abspath(os.path.dirname(__file__))
 root_dir = os.path.abspath(os.path.dirname(__file__ + '/../../../../../'))
 # Define the base path to the splited dataset directory
 # dataset_dir = os.path.join(base_dir, '../../../../grasp_diffusion_network/dataset_acronym_shapenetsem')
 dataset_dir = os.path.join(root_dir, 'grasp_diffusion_network/dataset_acronym_shapenetsem')
+train_params_dir = os.path.join(get_root_src(), 'grasp_diffusion', 'scripts', 'train', 'params')
 
 def parse_args():
     p = configargparse.ArgumentParser()
@@ -87,8 +90,17 @@ def main(opt):
     test_files = [os.path.join(dataset_dir, 'grasps', fname) for fname in test_file_names]
     train_files = [os.path.normpath(fpath) for fpath in train_files]
     test_files = [os.path.normpath(fpath) for fpath in test_files]
-
+    train_files = np.array(train_files)
+    test_files = np.array(test_files)
+    
     ## Dataset
+    data_loader_options = {}
+    data_loader_options['num_workers'] = 0
+    data_loader_options['pin_memory'] = True
+    data_loader_options['persistent_workers'] = data_loader_options['num_workers'] > 0
+    # data_loader_options['multiprocessing_context'] = mp.get_context('spawn') 
+    
+
     train_dataset = datasets.PartialPointcloudAcronymAndSDFDataset(
         augmented_rotation=True,
         one_object=args['single_object'],
@@ -99,7 +111,8 @@ def main(opt):
         train_dataset,
         batch_size=args['TrainSpecs']['batch_size'],
         shuffle=True,
-        drop_last=True
+        drop_last=True,
+        **data_loader_options
     )
     test_dataset = datasets.PartialPointcloudAcronymAndSDFDataset(
         augmented_rotation=True,
@@ -111,12 +124,15 @@ def main(opt):
         test_dataset,
         batch_size=args['TrainSpecs']['batch_size'],
         shuffle=True,
-        drop_last=True
+        drop_last=True,
+        **data_loader_options
     )
 
 
     ## Model
     args['device'] = device
+    ## model params    
+    args['params_dir'] = os.path.join(train_params_dir, 'multiobject_partialp_graspdif')  
     model = loader.load_model(args)
 
     # Losses

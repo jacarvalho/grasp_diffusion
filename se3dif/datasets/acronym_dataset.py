@@ -1,6 +1,8 @@
 import gc
 import glob
 import copy
+import multiprocessing
+import pdb
 import time
 
 import numpy as np
@@ -101,6 +103,8 @@ class AcronymGrasps():
         self.bad_grasps = None
 
     def load_data(self):
+        # process = psutil.Process(os.getpid())
+        # print(f"Memory used before loading data: {process.memory_info().rss / 1024 ** 2:.2f} MB")
         scale = None
         filename = self.filename
 
@@ -112,10 +116,12 @@ class AcronymGrasps():
             self.mesh_scale = data["object_scale"] if scale is None else scale
         elif filename.endswith(".h5"):
             with h5py.File(filename, "r") as data:
-                self.mesh_fname = data["object/file"][()].decode('utf-8')
+                # self.mesh_fname = data["object/file"][()].decode('utf-8')
+                self.mesh_fname = copy.deepcopy(data["object/file"][()]).decode('utf-8')
                 self.mesh_type = self.mesh_fname.split('/')[1]
                 self.mesh_id = self.mesh_fname.split('/')[-1].split('.')[0]
-                self.mesh_scale = data["object/scale"][()] if scale is None else scale
+                # self.mesh_scale = data["object/scale"][()] if scale is None else scale
+                self.mesh_scale = data["object/scale"][()].copy() if scale is None else scale
             # data = h5py.File(filename, "r")
             # self.mesh_fname = data["object/file"][()].decode('utf-8')
             # self.mesh_type = self.mesh_fname.split('/')[1]
@@ -130,7 +136,8 @@ class AcronymGrasps():
         self.good_grasps = self.grasps[good_idxs, ...]
         self.bad_grasps = self.grasps[bad_idxs, ...]
         
-        del data, filename
+        # print(f"Memory used after loading data: {process.memory_info().rss / 1024 ** 2:.2f} MB")
+        # del data, filename
 
     def load_grasps(self, filename):
         """Load transformations and qualities of grasps from a JSON or HDF5 file.
@@ -148,30 +155,51 @@ class AcronymGrasps():
             success = np.array(data["quality_flex_object_in_gripper"])
         elif filename.endswith(".h5"):
             with h5py.File(filename, "r") as data:
-                T = np.array(data["grasps/transforms"])
-                success = np.array(data["grasps/qualities/flex/object_in_gripper"])
-            # data = h5py.File(filename, "r")
-            # T = np.array(data["grasps/transforms"])
-            # success = np.array(data["grasps/qualities/flex/object_in_gripper"])
+                T = data["grasps/transforms"][:].copy()
+                success = data["grasps/qualities/flex/object_in_gripper"][:].copy()
         else:
             raise RuntimeError("Unknown file ending:", filename)
         
-        del data, filename
+        # del data, filename
         return T, success
 
+    # def load_mesh(self):
+    #     if self.mesh_fname is None:
+    #         self.load_data()
+
+    #     mesh_path_file = os.path.join(get_data_src(), self.mesh_fname)
+    #     # mesh = trimesh.load(mesh_path_file, file_type='obj', force='mesh')
+    #     # mesh.apply_scale(self.mesh_scale)
+    #     # if type(mesh) == trimesh.scene.scene.Scene:
+    #     #     mesh = trimesh.util.concatenate(mesh.dump())
+        
+    #     with trimesh.load(mesh_path_file, file_type='obj', force='mesh') as mesh:
+    #         mesh.apply_scale(self.mesh_scale)
+    #         if type(mesh) == trimesh.scene.scene.Scene:
+    #             mesh = trimesh.util.concatenate(mesh.dump())
+                 
+    #     # del mesh_path_file
+    #     return mesh
+        
     def load_mesh(self):
+        trimesh.util.attach_to_log(level='ERROR')
+        trimesh.caching.CACHE_DISABLE = True
+        
         if self.mesh_fname is None:
             self.load_data()
 
         mesh_path_file = os.path.join(get_data_src(), self.mesh_fname)
-
-        mesh = trimesh.load(mesh_path_file, file_type='obj', force='mesh')
-
-        mesh.apply_scale(self.mesh_scale)
-        if type(mesh) == trimesh.scene.scene.Scene:
-            mesh = trimesh.util.concatenate(mesh.dump())
-        del mesh_path_file
-        return mesh
+        
+        try:
+            mesh = trimesh.load(mesh_path_file, file_type='obj', force='mesh',process=False)
+            mesh.apply_scale(self.mesh_scale)
+            if isinstance(mesh, trimesh.scene.scene.Scene):
+                mesh = trimesh.util.concatenate(mesh.dump())
+            
+            return mesh
+        finally:
+       
+            del mesh_path_file
 
 
 class AcronymGraspsDirectory():
@@ -215,7 +243,7 @@ class AcronymGraspsDirectory():
                 self.avail_obj_test = []
                 for grasp_file in test_files:
                     self.avail_obj.append(AcronymGrasps(grasp_file))
-        del json_file_path, splits_dir, json_file_name, split_data, train_file_names, train_files, test_file_names, test_files
+        # del json_file_path, splits_dir, json_file_name, split_data, train_file_names, train_files, test_file_names, test_files
 
 
 class AcronymAndSDFDataset(Dataset):
@@ -370,7 +398,7 @@ class AcronymAndSDFDataset(Dataset):
 
             plt.show(block=True)
 
-        del sdf_dict
+        # del sdf_dict
 
         res = {'point_cloud': torch.from_numpy(p_clouds).float(),
                'x_sdf': torch.from_numpy(coords).float(),
@@ -380,6 +408,7 @@ class AcronymAndSDFDataset(Dataset):
                'visual_context':  torch.Tensor([index_obj])}
 
         return res, {'sdf': torch.from_numpy(sdf).float(), 'grad_sdf': torch.from_numpy(grad_sdf).float()}
+    
 
     def __getitem__(self, index):
         'Generates one sample of data'
@@ -439,7 +468,7 @@ class PointcloudAcronymAndSDFDataset(Dataset):
         self.visualize = visualize
         self.scale = 8.
         
-        del n, train_size, test_size
+        # del n, train_size, test_size
 
     def __len__(self):
         return self.len
@@ -478,8 +507,13 @@ class PointcloudAcronymAndSDFDataset(Dataset):
         return xyz, sdf
 
     def _get_mesh_pcl(self, grasp_obj):
-        mesh = grasp_obj.load_mesh()
-        return mesh.sample(self.n_pointcloud)
+        
+        # mesh = grasp_obj.load_mesh()
+        # mesh_sample = mesh.sample(self.n_pointcloud)
+        with grasp_obj.load_mesh() as mesh:
+            mesh_sample = mesh.sample(self.n_pointcloud)
+        del mesh
+        return mesh_sample
 
     def _get_item(self, index):
         if self.one_object:
@@ -551,7 +585,7 @@ class PointcloudAcronymAndSDFDataset(Dataset):
                'x_ene_pos': torch.from_numpy(H_grasps).float(),
                'scale': torch.Tensor([self.scale]).float()}
 
-        del pcl, xyz, H_grasps, sdf, grasps_obj, R, H, mean, x_grasps, x_sdf, c, x, n, sdf_dict, loc, scale, mesh, mesh_sample, sdf_file, mesh_fname, mesh_scale, filename, mesh_name, mesh_type, rix
+        # del pcl, xyz, H_grasps, sdf, grasps_obj, R, H, mean, x_grasps, x_sdf, c, x, n, sdf_dict, loc, scale, mesh, mesh_sample, sdf_file, mesh_fname, mesh_scale, filename, mesh_name, mesh_type, rix
         return res, {'sdf': torch.from_numpy(sdf).float()}
 
     def __getitem__(self, index):
@@ -806,7 +840,7 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         # Sampler
         self.scan_pointcloud = ScanPointcloud()
         
-        del class_type, se3, phase, one_object, n_pointcloud, n_density, n_coords, augmented_rotation, visualize, split, train_files, test_files
+        # del class_type, se3, phase, one_object, n_pointcloud, n_density, n_coords, augmented_rotation, visualize, split, train_files, test_files
 
     def __len__(self):
         return self.len
@@ -818,7 +852,7 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         except:
             print('Error in sampling grasps.')
             raise ValueError("No valid grasps available.")
-        del rix
+        # del rix
         return H_grasps
 
     def _get_sdf(self, grasp_obj):
@@ -840,25 +874,35 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         xyz = xyz[rix[:self.n_occ], :]
         sdf = sdf_dict['sdf'][rix[:self.n_occ]] * scale * mesh_scale
         
-        del rix, sdf_dict, loc, scale, mesh_type, mesh_name, filename, sdf_file
+        # del rix, sdf_dict, loc, scale, mesh_type, mesh_name, filename, sdf_file
         return xyz, sdf
 
     def _get_mesh_pcl(self, grasp_obj):
+        process = psutil.Process(os.getpid())
         mesh = grasp_obj.load_mesh()
+        
         # 1. Mesh Centroid
         centroid = mesh.centroid
+        
         H = np.eye(4)
         H[:3, -1] = -centroid
         mesh.apply_transform(H)
         # Generate point cloud
         P = self.scan_pointcloud.get_hq_scan_view(mesh)
         P += centroid
+
         try:
             rix = np.random.randint(low=0, high=P.shape[0], size=self.n_pointcloud)
         except:
             print('Error in sampling point cloud.')
-
         return P[rix, :]
+    
+    def get_mesh_pcl_subprocess(self, queue, filename, n_pointcloud):
+        grasp_obj = AcronymGrasps(filename)
+        mesh = grasp_obj.load_mesh()
+        ret = queue.get()
+        ret['pcl'] = mesh.sample(n_pointcloud)
+        queue.put(ret)
 
     def _get_item(self, index):
         if self.one_object:
@@ -869,26 +913,34 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
             grasp_file = self.train_grasp_files[index]
         else:
             grasp_file = self.test_grasp_files[index]
-
+        
         # Open the h5 file here instead of __init__
         grasps_obj = AcronymGrasps(grasp_file)
         grasps_obj.load_data()
-
+        
         # Check if there are good grasps
         if grasps_obj.good_grasps.shape[0] == 0:
             # Skip this sample or handle it appropriately
             # Here, we'll raise an exception to indicate invalid data
             raise ValueError(f"No good grasps in file: {grasp_file}")
-
+        
         # SDF
         xyz, sdf = self._get_sdf(grasps_obj)
-
+        
         # PointCloud
-        pcl = self._get_mesh_pcl(grasps_obj)
-
+        # pcl = self._get_mesh_pcl(grasps_obj)
+        # fix for memory leak, by using a subprocess
+        queue = multiprocessing.Queue()
+        ret = {'pcl': None}
+        queue.put(ret)
+        p = multiprocessing.Process(target=self.get_mesh_pcl_subprocess, args=(queue, grasp_file, self.n_pointcloud))
+        p.start()
+        p.join()
+        pcl = queue.get()['pcl']
+        
         # Grasps good/bad
         H_grasps = self._get_grasps(grasps_obj)
-
+        
         # Rescale, rotate and translate
         xyz = xyz * self.scale
         sdf = sdf * self.scale
@@ -911,6 +963,7 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         xyz = np.einsum('mn,bn->bm', R, xyz)
         H_grasps = np.einsum('mn,bnk->bmk', H, H_grasps)
 
+        
         # Visualization
         if self.visualize:
             import matplotlib.pyplot as plt
@@ -931,12 +984,17 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
             ax.scatter(x[:, 0], x[:, 1], x[:, 2], c=c)
             plt.show()
 
+
+        
         res = {'visual_context': torch.from_numpy(pcl).float(),
                'x_sdf': torch.from_numpy(xyz).float(),
                'x_ene_pos': torch.from_numpy(H_grasps).float(),
                'scale': torch.Tensor([self.scale]).float()}
-        del pcl, xyz, H_grasps, grasps_obj, R, H, mean
+        
+        
+        # del pcl, xyz, H_grasps, grasps_obj, R, H, mean
         return res, {'sdf': torch.from_numpy(sdf).float()}
+    
 
     def __getitem__(self, index):
         'Generates one sample of data'
@@ -1000,18 +1058,29 @@ if __name__ == '__main__':
     )
 
     # Create DataLoaders
-    train_dataloader = DataLoader(train_dataset, batch_size=10, shuffle=True)
-    test_dataloader = DataLoader(test_dataset, batch_size=10, shuffle=False)
+    train_dataloader = DataLoader(train_dataset, batch_size=100, shuffle=True)
+    test_dataloader = DataLoader(test_dataset, batch_size=100, shuffle=False)
 
-    # Iterate over the train DataLoader
-    print("Training Data:")
-    for x, y in train_dataloader:
-        print(x)
-        break  # Remove or adjust as needed
+    # # Iterate over the train DataLoader
+    # print("Training Data:")
+    # for x, y in train_dataloader:
+    #     print(x)
+    #     break  # Remove or adjust as needed
 
-    # Iterate over the test DataLoader
-    print("\nTesting Data:")
-    for x, y in test_dataloader:
-        print(x)
-        break  # Remove or adjust as needed
-
+    # # Iterate over the test DataLoader
+    # print("\nTesting Data:")
+    # for x, y in test_dataloader:
+    #     print(x)
+    #     break  # Remove or adjust as needed
+    
+    # epoch = 0
+    # while True:
+    #     process = psutil.Process(os.getpid())
+    #     print(f"Memory usage before epoch {epoch}: {process.memory_info().rss / 1024 ** 2} MB")
+    #     # Iterate over the train DataLoader
+    #     print(f"Training Data {epoch}:")
+    #     for x in train_dataloader:
+    #         pass
+    #     epoch += 1
+    #     gc.collect()
+    #     print(f"Memory usage after epoch {epoch}: {process.memory_info().rss / 1024 ** 2} MB")
