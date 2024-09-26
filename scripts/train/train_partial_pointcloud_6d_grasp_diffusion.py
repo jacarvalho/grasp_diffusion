@@ -60,8 +60,8 @@ def parse_args():
     p.add_argument('--device',  type=str, default='cuda',)
     p.add_argument('--class_type', type=str, default='Mug')
     
-    p.add_argument('--allowed_categories', type=str or set, default=CAT10, choices="Mug-v00,Mug-v01,Mug-v04,Cup" or CAT10,help='Just for using our splied dataset')
-    p.add_argument('--batch_size', type=int, default=4, help='Batch size')
+    p.add_argument('--allowed_categories', type=str or set, default="Mug-v00", choices="Mug-v00,Mug-v01,Mug-v04,Cup" or CAT10,help='Just for using our splied dataset')
+    p.add_argument('--batch_size', type=int, default=2, help='Batch size')
 
     opt = p.parse_args()
     return opt

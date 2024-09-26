@@ -55,6 +55,51 @@ def load_model(args):
     return model
 
 
+def load_model_pointcloud_grasp_diffusion(args):
+    args["NetworkArch"] = "PointcloudGraspDiffusion"
+    args["NetworkSpecs"] = {
+        "feature_encoder": {
+        "enc_dim": 132,
+        "in_dim": 3,
+        "out_dim": 7,
+        "dims" : [ 512, 512, 512, 512, 512, 512, 512, 512],
+        "dropout" : [0, 1, 2, 3, 4, 5, 6, 7],
+        "dropout_prob" : 0.2,
+        "norm_layers" : [0, 1, 2, 3, 4, 5, 6, 7],
+        "latent_in" : [4],
+        "xyz_in_all" : False,
+        "use_tanh" : False,
+        "latent_dropout" : False,
+        "weight_norm" : True
+        },
+        "encoder": {
+        "latent_size": 132,
+        "hidden_dim": 512
+        },
+        "points": {
+        "n_points": 30,
+        "loc": [0.0, 0.0, 0.5],
+        "scale": [0.7, 0.5, 0.7]
+        },
+        "decoder": {
+        "hidden_dim": 512
+        }
+        }
+        
+    model = load_pointcloud_grasp_diffusion(args)
+    load_model_dir = args['checkpoints_dir']
+
+    try:
+        if args['device'] == 'cpu':
+            model.load_state_dict(torch.load(load_model_dir, map_location=torch.device('cpu')))
+        else:
+            model.load_state_dict(torch.load(load_model_dir))
+    except:
+        pass
+
+    return model
+
+
 def load_grasp_diffusion(args):
     device = args['device']
     params = args['NetworkSpecs']

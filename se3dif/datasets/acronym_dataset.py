@@ -245,6 +245,36 @@ class AcronymGraspsDirectory():
                     self.avail_obj.append(AcronymGrasps(grasp_file))
 
 
+class AcronymGraspsDirectory_():
+    def __init__(self,dataset_dir=None, allowed_categories=None, split='test'):   
+        # Using splited dataset
+        # Determine the JSON file path based on opt.allowed_categories
+        splits_dir = os.path.join(dataset_dir, 'splits')
+        json_file_name = f"{allowed_categories}.json"
+        json_file_path = os.path.join(splits_dir, json_file_name)
+
+        # Load the JSON file content
+        with open(json_file_path, 'r') as json_file:
+            split_data = json.load(json_file)
+
+        # Extract training and testing file names from the JSON content
+        self.avail_obj = []
+        if split == 'train':
+            train_file_names = split_data.get('train', [])
+            train_files = [os.path.join(dataset_dir, 'grasps', fname) for fname in train_file_names]
+            train_files = [os.path.normpath(fpath) for fpath in train_files]
+            self.avail_obj_train = []
+            for grasp_file in train_files:
+                self.avail_obj.append(AcronymGrasps(grasp_file))
+        elif split == 'test':
+            test_file_names = split_data.get('test', [])
+            test_files = [os.path.join(dataset_dir, 'grasps', fname) for fname in test_file_names]
+            test_files = [os.path.normpath(fpath) for fpath in test_files]
+            self.avail_obj_test = []
+            for grasp_file in test_files:
+                self.avail_obj.append(AcronymGrasps(grasp_file))
+
+
 
 class AcronymAndSDFDataset(Dataset):
     'DataLoader for training DeepSDF Auto-Decoder model'
