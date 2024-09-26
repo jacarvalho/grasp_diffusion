@@ -1007,6 +1007,7 @@ class PointcloudAcronymAndSDFDataset(Dataset):
 #             # For simplicity, raise the exception to let DataLoader handle it
 #             raise e
 
+# Custom exception class
 class NoPositiveGraspsException(Exception):
     pass
 
@@ -1040,7 +1041,7 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         self.n_density = n_density
         self.n_occ = n_coords
 
-        # Variables on Data
+        # Data variables
         self.one_object = one_object
         self.augmented_rotation = augmented_rotation
         self.se3 = se3
@@ -1062,7 +1063,7 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
             rix = np.random.randint(low=0, high=grasp_obj.good_grasps.shape[0], size=self.n_density)
             H_grasps = grasp_obj.good_grasps[rix, ...]
         except:
-            print('Error in sampling grasps.')
+            # If an exception occurs, raise ValueError
             raise ValueError("No valid grasps available.")
         # del rix
         return H_grasps
@@ -1106,7 +1107,8 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         try:
             rix = np.random.randint(low=0, high=P.shape[0], size=self.n_pointcloud)
         except:
-            print('Error in sampling point cloud.')
+            # If an exception occurs, continue processing
+            pass
         return P[rix, :]
     
     def get_mesh_pcl_subprocess(self, queue, filename, n_pointcloud):
@@ -1126,13 +1128,13 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         else:
             grasp_file = self.test_grasp_files[index]
         
-        # Open the h5 file here instead of __init__
+        # Open the h5 file here instead of in __init__
         grasps_obj = AcronymGrasps(grasp_file)
         grasps_obj.load_data()
         
         # Check if there are good grasps
         if grasps_obj.good_grasps.shape[0] == 0:
-            # Skip this sample by raising a custom exception
+            # If there are no good grasps, raise a custom exception
             raise NoPositiveGraspsException()
         
         # SDF
@@ -1140,7 +1142,7 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         
         # PointCloud
         # pcl = self._get_mesh_pcl(grasps_obj)
-        # fix for memory leak, by using a subprocess
+        # Fix for memory leak by using a subprocess
         queue = multiprocessing.Queue()
         ret = {'pcl': None}
         queue.put(ret)
@@ -1152,7 +1154,7 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         # Grasps good/bad
         H_grasps = self._get_grasps(grasps_obj)
         
-        # Rescale, rotate and translate
+        # Rescale, rotate, and translate
         xyz = xyz * self.scale
         sdf = sdf * self.scale
         pcl = pcl * self.scale
@@ -1208,13 +1210,11 @@ class PartialPointcloudAcronymAndSDFDataset(Dataset):
         while True:
             try:
                 return self._get_item(index)
-            except NoPositiveGraspsException as e:
-                # Handle the case when there is no valid data
-                print(e)
-                # Try the next index
+            except NoPositiveGraspsException:
+                # Skip current index and try the next one
                 index = (index + 1) % self.len
                 if index == starting_index:
-                    # No valid data found in the entire dataset
+                    # If we've looped back to the starting index, raise an exception
                     raise StopIteration("No valid data found in dataset.")
 
 if __name__ == '__main__':
