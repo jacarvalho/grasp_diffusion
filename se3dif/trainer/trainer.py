@@ -5,13 +5,16 @@ import datetime
 import numpy as np
 import torch
 import gc
+import subprocess
 
 from collections import defaultdict
 from se3dif.utils import makedirs, dict_to_device
 from torch.utils.tensorboard import SummaryWriter
 from tqdm.autonotebook import tqdm
 
+
 process = psutil.Process(os.getpid())
+memory_info = psutil.virtual_memory()
 
 def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_checkpoint, model_dir, loss_fn,
           summary_fn=None, iters_til_checkpoint=None, val_dataloader=None, clip_grad=False, val_loss_fn=None,
@@ -94,7 +97,7 @@ def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_che
                 # Print iteration time and validation check
                 test = total_steps % steps_til_summary
                 if not total_steps % steps_til_summary and rank == 0:
-                    print(f"Epoch {epoch}, Total loss {train_loss:.6f}, iteration time {time.time() - start_time:.6f}", end="\n")
+                    print(f"Epoch {epoch}, Total loss {train_loss:.6f}, iteration time {time.time() - start_time:.6f}", end="")
                     if val_dataloader is not None:
                         print("Running validation set...")
                         with torch.no_grad():
@@ -129,12 +132,19 @@ def train(model, train_dataloader, epochs, lr, steps_til_summary, epochs_til_che
                 if max_steps is not None and total_steps == max_steps:
                     break
             
-            if total_steps % 100 == 0:
-                gc.collect()
-                torch.cuda.empty_cache()
-                
-            print(f"RAM memory usage at end of epoch {epoch}: {process.memory_info().rss / 1024 ** 3:.4f} GB")
+                if total_steps % 100 == 0:
+                    gc.collect()
+                    torch.cuda.empty_cache()
+            
+            print("")
+            # print(f"RAM used: {process.memory_info().rss / 1024 ** 3:.4f} GB / Total: {memory_info.total / 1024 ** 3:.4f} GB")
+            print(f"RAM used: {memory_info.used / 1024 ** 3:.4f} GB / Total: {memory_info.total / 1024 ** 3:.4f} GB")
+            if torch.cuda.is_available():
+                # print(f"GPU memory usage at end of epoch {epoch}: {torch.cuda.memory_allocated() / 1024 ** 3:.4f} GB")
+                # print('\n'.join([f"GPU {i}: Used {int(used)/1024:.4f} GB / Total {int(total)/1024:.4f} GB" for i, (used, total) in enumerate([line.split(', ') for line in subprocess.check_output(['nvidia-smi', '--query-gpu=memory.used,memory.total', '--format=csv,noheader,nounits'], encoding='utf-8').strip().split('\n')])]))
+                print('\n'.join([f"GPU used: {int(used)/1024:.4f} GB / Total {int(total)/1024:.4f} GB" for used, total in [line.split(', ') for line in subprocess.check_output(['nvidia-smi', '--query-gpu=memory.used,memory.total', '--format=csv,noheader,nounits'], encoding='utf-8').strip().split('\n')]]))
 
+                
             if max_steps is not None and total_steps == max_steps:
                 break
 

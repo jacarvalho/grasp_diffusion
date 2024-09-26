@@ -3,6 +3,7 @@ import json
 import copy
 import configargparse
 import numpy as np
+from datetime import datetime
 from se3dif.utils import get_root_src
 
 import torch
@@ -22,6 +23,20 @@ root_dir = os.path.abspath(os.path.dirname(__file__ + '/../../../../../'))
 # dataset_dir = os.path.join(base_dir, '../../../../grasp_diffusion_network/dataset_acronym_shapenetsem')
 dataset_dir = os.path.join(root_dir, 'grasp_diffusion_network/dataset_acronym_shapenetsem')
 train_params_dir = os.path.join(get_root_src(), 'grasp_diffusion', 'scripts', 'train', 'params')
+
+# Selected 10 categories from the ACRONYM dataset
+CAT10 = {
+    'Book',
+    'Bottle',
+    'Bowl',
+    'Cup',
+    'Hammer',
+    'MilkCarton',
+    'Mug',
+    'RubiksCube',
+    'Shampoo',
+    'Teapot',
+}
 
 def parse_args():
     p = configargparse.ArgumentParser()
@@ -45,10 +60,59 @@ def parse_args():
     p.add_argument('--device',  type=str, default='cuda',)
     p.add_argument('--class_type', type=str, default='Mug')
     
-    p.add_argument('--allowed_categories', type=str, default='Mug-v00', help='Just for using our splied dataset')
+    p.add_argument('--allowed_categories', type=str or set, default=CAT10, choices="Mug-v00,Mug-v01,Mug-v04,Cup" or CAT10,help='Just for using our splied dataset')
+    p.add_argument('--batch_size', type=int, default=4, help='Batch size')
 
     opt = p.parse_args()
     return opt
+
+def load_train_test_files(allowed_categories, dataset_dir):
+    """Load and accumulate train and test file paths based on allowed_categories."""
+    train_files = []
+    test_files = []
+
+    splits_dir = os.path.join(dataset_dir, 'splits')
+
+    if isinstance(allowed_categories, str):
+        json_file_name = f"{allowed_categories}.json"
+        json_file_path = os.path.join(splits_dir, json_file_name)
+
+        with open(json_file_path, 'r') as json_file:
+            split_data = json.load(json_file)
+
+        train_file_names = split_data.get('train', [])
+        test_file_names = split_data.get('test', [])
+
+        # Combine base path with file names
+        train_files = [os.path.join(dataset_dir, 'grasps', fname) for fname in train_file_names]
+        test_files = [os.path.join(dataset_dir, 'grasps', fname) for fname in test_file_names]
+    elif isinstance(allowed_categories, set):
+        # Multiple categories, accumulate files from each
+        for category in allowed_categories:
+            json_file_name = f"{category}.json"
+            json_file_path = os.path.join(splits_dir, json_file_name)
+
+            # Load the JSON file content
+            with open(json_file_path, 'r') as json_file:
+                split_data = json.load(json_file)
+
+            # Extract training and testing file names
+            train_file_names = split_data.get('train', [])
+            test_file_names = split_data.get('test', [])
+
+            # Combine base path with file names and accumulate
+            train_files.extend([os.path.join(dataset_dir, 'grasps', fname) for fname in train_file_names])
+            test_files.extend([os.path.join(dataset_dir, 'grasps', fname) for fname in test_file_names])
+    else:
+        raise ValueError("allowed_categories must be a string or a set of strings.")
+
+    # Normalize the file paths and convert to numpy arrays
+    train_files = np.array([os.path.normpath(fpath) for fpath in train_files])
+    test_files = np.array([os.path.normpath(fpath) for fpath in test_files])
+
+    return train_files, test_files
+
+
 
 
 def main(opt):
@@ -56,10 +120,17 @@ def main(opt):
     ## Load training args ##
     spec_file = os.path.join(opt.specs_file_dir, opt.spec_file)
     args = load_experiment_specifications(spec_file)
+    
+    args['TrainSpecs']['batch_size'] = opt.batch_size
+    class_type = opt.allowed_categories if isinstance(opt.allowed_categories, str) else '_'.join(opt.allowed_categories)
+    now = datetime.now()
+    current_time = now.strftime("%Y-%m-%d_%H-%M")
 
     # saving directories
     root_dir = opt.saving_root
-    exp_dir  = os.path.join(root_dir, args['exp_log_dir'])
+    exp_dir = os.path.join(root_dir, args['exp_log_dir'], class_type)
+    exp_dir = os.path.join(exp_dir,f"bs_{opt.batch_size}_{current_time}")
+    
     args['saving_folder'] = exp_dir
 
 
@@ -72,26 +143,28 @@ def main(opt):
     else:
         device = torch.device('cpu')
         
-    # Determine the JSON file path based on opt.allowed_categories
-    splits_dir = os.path.join(dataset_dir, 'splits')
-    json_file_name = f"{opt.allowed_categories}.json"
-    json_file_path = os.path.join(splits_dir, json_file_name)
+    # # Determine the JSON file path based on opt.allowed_categories
+    # splits_dir = os.path.join(dataset_dir, 'splits')
+    # json_file_name = f"{opt.allowed_categories}.json"
+    # json_file_path = os.path.join(splits_dir, json_file_name)
 
-    # Load the JSON file content
-    with open(json_file_path, 'r') as json_file:
-        split_data = json.load(json_file)
+    # # Load the JSON file content
+    # with open(json_file_path, 'r') as json_file:
+    #     split_data = json.load(json_file)
 
-    # Extract training and testing file names from the JSON content
-    train_file_names = split_data.get('train', [])
-    test_file_names = split_data.get('test', [])
+    # # Extract training and testing file names from the JSON content
+    # train_file_names = split_data.get('train', [])
+    # test_file_names = split_data.get('test', [])
 
-    # Combine the base path with file names to get full paths
-    train_files = [os.path.join(dataset_dir, 'grasps', fname) for fname in train_file_names]
-    test_files = [os.path.join(dataset_dir, 'grasps', fname) for fname in test_file_names]
-    train_files = [os.path.normpath(fpath) for fpath in train_files]
-    test_files = [os.path.normpath(fpath) for fpath in test_files]
-    train_files = np.array(train_files)
-    test_files = np.array(test_files)
+    # # Combine the base path with file names to get full paths
+    # train_files = [os.path.join(dataset_dir, 'grasps', fname) for fname in train_file_names]
+    # test_files = [os.path.join(dataset_dir, 'grasps', fname) for fname in test_file_names]
+    # train_files = [os.path.normpath(fpath) for fpath in train_files]
+    # test_files = [os.path.normpath(fpath) for fpath in test_files]
+    # train_files = np.array(train_files)
+    # test_files = np.array(test_files)
+    
+    train_files, test_files = load_train_test_files(opt.allowed_categories, dataset_dir)
     
     ## Dataset
     data_loader_options = {}
