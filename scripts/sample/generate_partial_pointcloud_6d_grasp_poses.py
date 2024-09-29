@@ -29,7 +29,7 @@ def parse_args():
     p.add_argument('--obj_id', type=str, default='3')
     p.add_argument('--n_grasps', type=str, default='10')
     p.add_argument('--obj_class', type=str, default='Mug')
-    p.add_argument('--allowed_categories', type=str, default='Mug-v00', help='Just for using our splied dataset')
+    p.add_argument('--allowed_categories', type=str, default='Cup', help='Just for using our splied dataset')
     p.add_argument('--split', type=str, choices=['test', 'train'], default='test', help='Using split dataset test or train')
     p.add_argument('--model_from', type=str, choices=['pretrained_model', 'saving_folder'], default='saving_folder',help='Load model from given pretrained model or saving folder of trained model')
 

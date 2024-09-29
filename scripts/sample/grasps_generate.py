@@ -23,9 +23,9 @@ def parse_args():
     p = configargparse.ArgumentParser()
     p.add('-c', '--config_filepath', required=False, is_config_file=True, help='Path to config file.')
 
-    p.add_argument('--obj_id', type=str, default='3')
+    p.add_argument('--obj_id', type=str, default='2')
     p.add_argument('--n_grasps', type=str, default='10')
-    p.add_argument('--allowed_categories', type=str, default='Cup', help='Just for using our splied dataset')
+    p.add_argument('--allowed_categories', type=str, default='CAT10', choices='Cup' or 'Mug-v00' or 'CAT10', help='Just for using our splied dataset')
     p.add_argument('--split', type=str, choices=['test', 'train'], default='test', help='Using split dataset test or train')
     p.add_argument('--model_from', type=str, choices=['pretrained_model', 'saving_folder'], default='saving_folder', help='Load model from given pretrained model or saving folder of trained model')
     p.add_argument('--scale', type=float, default=8., help='Scale of the point cloud, mesh and grasps')
@@ -102,15 +102,29 @@ if __name__ == '__main__':
     obj_id = int(args.obj_id)
     scale = args.scale
     dataset_dir = os.path.join(root_dir, 'grasp_diffusion_network/dataset_acronym_shapenetsem')
-    P, mesh = sample_pointcloud(obj_id=obj_id, dataset_dir=dataset_dir, allowed_categories=args.allowed_categories, split=args.split, scale=scale)
+    if args.allowed_categories == 'CAT10':
+        # random choose one category from Book, Hammer, Cup, Mug, Teapot, Shampoo_Bottle, Bowl, RubiksCube, MilkCarton 
+        allowed_categories = np.random.choice(['Book', 'Hammer', 'Cup', 'Mug', 'Teapot', 'Shampoo_Bottle', 'Bowl', 'RubiksCube', 'MilkCarton'])
+        test_categories = allowed_categories
+    else:
+        allowed_categories = args.allowed_categories
+        test_categories = allowed_categories
+    P, mesh = sample_pointcloud(obj_id=obj_id, dataset_dir=dataset_dir, allowed_categories=allowed_categories, split=args.split, scale=scale)
 
-    # Input parameters
-    checkpoints_dir = os.path.join(get_root_src(), 'logs', 'multiobject_partial_graspdif', 'Cup/bs_4_2024-09-25_20-50/checkpoints/', 'model_current.pth')
+        # Input parameters
+    if args.allowed_categories == 'Cup':
+        checkpoints_dir = os.path.join(get_root_src(), 'logs', 'multiobject_partial_graspdif', 'Cup/bs_4_2024-09-25_20-50/checkpoints/', 'model_current.pth')
+    elif args.allowed_categories == 'Mug-v00':
+        checkpoints_dir = os.path.join(get_root_src(), 'logs', 'multiobject_partial_graspdif', 'Mug-v00/bs_4_2024-09-25_20-50/checkpoints/', 'model_current.pth')
+    elif args.allowed_categories == 'CAT10':
+        checkpoints_dir = os.path.join(get_root_src(), 'logs', 'multiobject_partial_graspdif', 'Book_Hammer_Cup_Mug_Teapot_Shampoo_Bottle_Bowl_RubiksCube_MilkCarton/bs_4_2024-09-26_10-08/checkpoints/', 'model_current.pth')
+    
+    
     n_grasps = 5
     pointcloud = P
 
     print('##########################################################')
-    print('Category: {}'.format(args.allowed_categories))
+    print('Train category / Test category: {}/{}'.format(args.allowed_categories, test_categories))
     print('##########################################################')
     print('Dataset split: {}'.format(args.split))
     print('Selected object: {}'.format(obj_id))
