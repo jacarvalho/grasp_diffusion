@@ -148,6 +148,7 @@ def visualize_grasps(Hs, scale=1., p_cloud=None, energies=None, colors=None, mes
         return scene
 
 
+
 def generate_mesh_grid(xmin=[-1.,-1.,-1.], xmax = [1., 1.,1.], n_points=20):
     x = torch.linspace(xmin[0], xmax[0], n_points)
     y = torch.linspace(xmin[1], xmax[1], n_points)

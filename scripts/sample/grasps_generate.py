@@ -1,4 +1,6 @@
 import time
+import shutil
+from datetime import datetime
 import scipy.spatial.transform
 import torch
 import numpy as np
@@ -25,15 +27,32 @@ def parse_args():
 
     p.add_argument('--obj_id', type=str, default='2')
     p.add_argument('--n_grasps', type=str, default='10')
-    p.add_argument('--allowed_categories', type=str, default='CAT10', choices='Cup' or 'Mug-v00' or 'CAT10', help='Just for using our splied dataset')
     p.add_argument('--split', type=str, choices=['test', 'train'], default='test', help='Using split dataset test or train')
     p.add_argument('--model_from', type=str, choices=['pretrained_model', 'saving_folder'], default='saving_folder', help='Load model from given pretrained model or saving folder of trained model')
     p.add_argument('--scale', type=float, default=8., help='Scale of the point cloud, mesh and grasps')
+    p.add_argument('--allowed_categories', type=str, default='CAT10', choices='Cup' or 'Mug-v00' or 'CAT10', help='Just for using our splied dataset')
     opt = p.parse_args()
     return opt
 
 
+def check_and_update_checkpoint_dir(checkpoints_dir):
+    if checkpoints_dir.endswith('.pth') and os.path.isfile(checkpoints_dir):
+        return checkpoints_dir
+
+    model_current_path = os.path.join(checkpoints_dir, 'model_current.pth')
+    if os.path.exists(model_current_path):
+        return model_current_path
+
+    for file_name in os.listdir(checkpoints_dir):
+        if file_name.endswith('.pth'):
+            return os.path.join(checkpoints_dir, file_name)
+
+    raise FileNotFoundError('No .pth file found in the directory')
+
+
+
 def get_approximated_grasp_diffusion_field(p, device='cpu', batch=10, checkpoints_dir=None):
+    checkpoints_dir = check_and_update_checkpoint_dir(checkpoints_dir)
     model_args = {
         'device': device,
         'checkpoints_dir': checkpoints_dir
@@ -95,6 +114,35 @@ def generate_grasps(checkpoints_dir, n_grasps, pointcloud, device='cpu'):
     H = transform_grasp_to_pointcloud_center(pointcloud, H)
     return H
 
+def copy_model_to_upper_levels(checkpoints_dir):
+    latest_dir = None
+    latest_time = None
+
+    for root, dirs, files in os.walk(checkpoints_dir):
+        for dir_name in dirs:
+            if 'bs_' in dir_name:
+                try:
+                    date_str = dir_name.split('_')[2]  
+                    time_str = dir_name.split('_')[3]
+                    full_datetime = datetime.strptime(f'{date_str}_{time_str}', '%Y-%m-%d_%H-%M')
+                    if latest_time is None or full_datetime > latest_time:
+                        latest_time = full_datetime
+                        latest_dir = os.path.join(root, dir_name)
+                except (IndexError, ValueError):
+                    continue
+
+    if latest_dir:
+        model_path = os.path.join(latest_dir, 'checkpoints', 'model_current.pth')
+        if os.path.exists(model_path):
+            parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(model_path)))
+            target_path = os.path.join(parent_dir, 'model_current.pth')
+            shutil.copyfile(model_path, target_path)
+            return target_path
+        else:
+            raise FileNotFoundError('model_current.pth not found in the latest checkpoints directory')
+    else:
+        raise FileNotFoundError('No valid checkpoints directory found')
+
 
 if __name__ == '__main__':
 
@@ -111,14 +159,16 @@ if __name__ == '__main__':
         test_categories = allowed_categories
     P, mesh = sample_pointcloud(obj_id=obj_id, dataset_dir=dataset_dir, allowed_categories=allowed_categories, split=args.split, scale=scale)
 
-        # Input parameters
+    # Input parameters
     if args.allowed_categories == 'Cup':
-        checkpoints_dir = os.path.join(get_root_src(), 'logs', 'multiobject_partial_graspdif', 'Cup/bs_4_2024-09-25_20-50/checkpoints/', 'model_current.pth')
+        checkpoints_dir = os.path.join(get_root_src(), 'logs', 'multiobject_partial_graspdif', 'Cup')
     elif args.allowed_categories == 'Mug-v00':
-        checkpoints_dir = os.path.join(get_root_src(), 'logs', 'multiobject_partial_graspdif', 'Mug-v00/bs_4_2024-09-25_20-50/checkpoints/', 'model_current.pth')
+        checkpoints_dir = os.path.join(get_root_src(), 'logs', 'multiobject_partial_graspdif', 'Mug-v00')
     elif args.allowed_categories == 'CAT10':
-        checkpoints_dir = os.path.join(get_root_src(), 'logs', 'multiobject_partial_graspdif', 'Book_Hammer_Cup_Mug_Teapot_Shampoo_Bottle_Bowl_RubiksCube_MilkCarton/bs_4_2024-09-26_10-08/checkpoints/', 'model_current.pth')
-    
+        checkpoints_dir = os.path.join(get_root_src(), 'logs', 'multiobject_partial_graspdif', 'Book_Hammer_Cup_Mug_Teapot_Shampoo_Bottle_Bowl_RubiksCube_MilkCarton')
+    else:
+        raise ValueError('Invalid allowed_categories')
+    copy_model_to_upper_levels(checkpoints_dir)
     
     n_grasps = 5
     pointcloud = P
