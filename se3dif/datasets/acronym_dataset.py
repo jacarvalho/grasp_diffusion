@@ -181,14 +181,16 @@ class AcronymGrasps():
     #     # del mesh_path_file
     #     return mesh
         
-    def load_mesh(self):
+    def load_mesh(self, dataset_dir=None):
         trimesh.util.attach_to_log(level='ERROR')
         trimesh.caching.CACHE_DISABLE = True
         
         if self.mesh_fname is None:
             self.load_data()
-
-        mesh_path_file = os.path.join(get_data_src(), self.mesh_fname)
+        if dataset_dir is None:
+            mesh_path_file = os.path.join(get_data_src(), self.mesh_fname)
+        else:
+            mesh_path_file = os.path.join(dataset_dir, self.mesh_fname)
         
         try:
             mesh = trimesh.load(mesh_path_file, file_type='obj', force='mesh',process=False)

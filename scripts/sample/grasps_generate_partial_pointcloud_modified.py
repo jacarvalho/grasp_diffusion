@@ -85,7 +85,7 @@ def get_approximated_grasp_diffusion_field(p, device='cpu', batch=10, checkpoint
 def sample_pointcloud(obj_id=0, dataset_dir=None, allowed_categories=None, split='test', scale=8.):
 
     acronym_grasps = AcronymGraspsDirectory_(dataset_dir=dataset_dir, allowed_categories=allowed_categories, split=split)
-    mesh = acronym_grasps.avail_obj[obj_id].load_mesh()
+    mesh = acronym_grasps.avail_obj[obj_id].load_mesh(dataset_dir=dataset_dir)
 
     centroid = mesh.centroid
     H = np.eye(4)
