@@ -107,7 +107,9 @@ def visualize_points(model, input):
     trimesh.Scene([p_cloud_tri, pc2, grip]).show()
 
 
-def visualize_grasps(Hs, scale=1., p_cloud=None, energies=None, colors=None, mesh=None, show=True):
+def visualize_grasps(Hs, scale=1., p_cloud=None, energies=None, colors=None, mesh=None, show=True, scale_pc=None):
+    if scale_pc is not None:
+        p_cloud *= 1 / scale_pc
 
     ## Set color list
     if colors is None:

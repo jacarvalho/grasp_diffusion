@@ -6,8 +6,8 @@
     "batch_size": 2,
     "num_epochs": 90000,
     "steps_til_summary": 500,
-    "iters_til_checkpoint": 10000,
-    "epochs_til_checkpoint": 100
+    "iters_til_checkpoint": 1000,
+    "epochs_til_checkpoint": 10
   },
   "NetworkArch" : "PointcloudGraspDiffusion",
   "NetworkSpecs" : {

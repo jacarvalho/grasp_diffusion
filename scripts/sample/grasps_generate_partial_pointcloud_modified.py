@@ -21,16 +21,27 @@ train_params_dir = os.path.join(base_dir, 'scripts', 'train', 'params')
 root_dir = os.path.abspath(os.path.dirname(__file__ + '/../../../../../'))
 
 
+allowed_categories = 'Cup'  # 'Cup' or 'Mug-v00' or 'CAT10'
+n_grasps = 5
+# path to the checkpoints directory of different categories
+checkpoints_dir = os.path.join(get_root_src(), 'logs/multiobject_partial_graspdif/Cup/bs_4_2024-09-25_20-50/checkpoints')
+# checkpoints_dir = os.path.join(get_root_src(), 'logs/multiobject_partial_graspdif/Mug-v00/bs_4_2024-09-25_20-50/checkpoints')
+# checkpoints_dir = os.path.join(get_root_src(), 'logs/multiobject_partial_graspdif/Book_Hammer_Cup_Mug_Teapot_Shampoo_Bottle_Bowl_RubiksCube_MilkCarton/bs_4_2024-09-26_10-08/checkpoints')
+dataset_root_folder = os.path.join(root_dir, 'grasp_diffusion_network/dataset_acronym_shapenetsem')
+
+
+
 def parse_args():
     p = configargparse.ArgumentParser()
     p.add('-c', '--config_filepath', required=False, is_config_file=True, help='Path to config file.')
 
-    p.add_argument('--obj_id', type=str, default='2')
-    p.add_argument('--n_grasps', type=str, default='10')
+    p.add_argument('--obj_id', type=int, default=2, help='Object id to sample from the dataset split')
     p.add_argument('--split', type=str, choices=['test', 'train'], default='test', help='Using split dataset test or train')
-    p.add_argument('--model_from', type=str, choices=['pretrained_model', 'saving_folder'], default='saving_folder', help='Load model from given pretrained model or saving folder of trained model')
     p.add_argument('--scale', type=float, default=8., help='Scale of the point cloud, mesh and grasps')
-    p.add_argument('--allowed_categories', type=str, default='CAT10', choices='Cup' or 'Mug-v00' or 'CAT10', help='Just for using our splied dataset')
+    p.add_argument('--allowed_categories', type=str, default=allowed_categories, choices='Cup' or 'Mug-v00' or 'CAT10', help='Just for using dataset_acronym_shapenetsem')
+    p.add_argument('--n_grasps', type=int, default=n_grasps, help='Number of grasps to generate')
+    p.add_argument('--checkpoints_dir', type=str, default=checkpoints_dir, help='Path to the checkpoints directory')
+    p.add_argument('--dataset_root_folder', type=str, default=dataset_root_folder, help='Path to the dataset folder')
     opt = p.parse_args()
     return opt
 
@@ -60,7 +71,11 @@ def get_approximated_grasp_diffusion_field(p, device='cpu', batch=10, checkpoint
 
     model = load_model_pointcloud_grasp_diffusion(model_args)
 
-    context = to_torch(p[None, ...], device)
+    # context = to_torch(p[None, ...], device)
+    if isinstance(p, np.ndarray):
+        context = to_torch(p[None, ...], device)
+    else:
+        context = p[None, ...].to(device)
     model.set_latent(context, batch=batch)
 
     generator = Grasp_AnnealedLD(model, batch=batch, T=70, T_fit=50, k_steps=1, device=device)
@@ -98,58 +113,39 @@ def sample_pointcloud(obj_id=0, dataset_dir=None, allowed_categories=None, split
     return P, mesh
 
 
-def transform_grasp_to_pointcloud_center(pointcloud, H):
-    pointcloud_center = np.mean(pointcloud, axis=0)
-    translation_matrix = np.eye(4)
+def transform_grasp_to_pointcloud_center(pointcloud, H, return_chain=False):
+    if isinstance(pointcloud, np.ndarray):
+        pointcloud = torch.tensor(pointcloud, dtype=torch.float32)
+    if isinstance(H, np.ndarray):
+        H = torch.tensor(H, dtype=torch.float32)
+
+    pointcloud_center = torch.mean(pointcloud, dim=0)
+    translation_matrix = torch.eye(4)
     translation_matrix[:3, 3] = -pointcloud_center
-    H_transformed = np.zeros_like(H)
-    for i in range(H.shape[0]):
-        H_transformed[i] = np.dot(translation_matrix, H[i])
+
+    if return_chain:
+        m, n, _, _ = H.shape
+        translation_matrix = translation_matrix.unsqueeze(0).expand(m, -1, -1)
+        H_transformed = torch.matmul(translation_matrix.unsqueeze(1), H)
+    else:
+        H_transformed = torch.matmul(translation_matrix, H)
+
     return H_transformed
 
 
-def generate_grasps(checkpoints_dir, n_grasps, pointcloud, device='cpu'):
+def generate_grasps(checkpoints_dir, n_grasps, pointcloud, device='cpu', scale=8., return_chain=False):
     generator, model = get_approximated_grasp_diffusion_field(p=pointcloud, device=device, batch=n_grasps, checkpoints_dir=checkpoints_dir)
-    H = to_numpy(generator.sample())
-    H = transform_grasp_to_pointcloud_center(pointcloud, H)
-    return H
-
-def copy_model_to_upper_levels(checkpoints_dir):
-    latest_dir = None
-    latest_time = None
-
-    for root, dirs, files in os.walk(checkpoints_dir):
-        for dir_name in dirs:
-            if 'bs_' in dir_name:
-                try:
-                    date_str = dir_name.split('_')[2]  
-                    time_str = dir_name.split('_')[3]
-                    full_datetime = datetime.strptime(f'{date_str}_{time_str}', '%Y-%m-%d_%H-%M')
-                    if latest_time is None or full_datetime > latest_time:
-                        latest_time = full_datetime
-                        latest_dir = os.path.join(root, dir_name)
-                except (IndexError, ValueError):
-                    continue
-
-    if latest_dir:
-        model_path = os.path.join(latest_dir, 'checkpoints', 'model_current.pth')
-        if os.path.exists(model_path):
-            parent_dir = os.path.dirname(os.path.dirname(os.path.dirname(model_path)))
-            target_path = os.path.join(parent_dir, 'model_current.pth')
-            shutil.copyfile(model_path, target_path)
-            return target_path
-        else:
-            raise FileNotFoundError('model_current.pth not found in the latest checkpoints directory')
-    else:
-        raise FileNotFoundError('No valid checkpoints directory found')
+    H_chain = generator.sample(return_chain=return_chain)
+    
+    # H_chain = transform_grasp_to_pointcloud_center(pointcloud, H_chain, return_chain=return_chain)
+    H_chain[..., :3, -1] *= 1 / scale
+    return H_chain
 
 
 if __name__ == '__main__':
 
     args = parse_args()
-    obj_id = int(args.obj_id)
-    scale = args.scale
-    dataset_dir = os.path.join(root_dir, 'grasp_diffusion_network/dataset_acronym_shapenetsem')
+
     if args.allowed_categories == 'CAT10':
         # random choose one category from Book, Hammer, Cup, Mug, Teapot, Shampoo_Bottle, Bowl, RubiksCube, MilkCarton 
         allowed_categories = np.random.choice(['Book', 'Hammer', 'Cup', 'Mug', 'Teapot', 'Shampoo_Bottle', 'Bowl', 'RubiksCube', 'MilkCarton'])
@@ -157,39 +153,26 @@ if __name__ == '__main__':
     else:
         allowed_categories = args.allowed_categories
         test_categories = allowed_categories
-    P, mesh = sample_pointcloud(obj_id=obj_id, dataset_dir=dataset_dir, allowed_categories=allowed_categories, split=args.split, scale=scale)
-
-    # Input parameters
-    if args.allowed_categories == 'Cup':
-        checkpoints_dir = os.path.join(get_root_src(), 'logs', 'multiobject_partial_graspdif', 'Cup')
-    elif args.allowed_categories == 'Mug-v00':
-        checkpoints_dir = os.path.join(get_root_src(), 'logs', 'multiobject_partial_graspdif', 'Mug-v00')
-    elif args.allowed_categories == 'CAT10':
-        checkpoints_dir = os.path.join(get_root_src(), 'logs', 'multiobject_partial_graspdif', 'Book_Hammer_Cup_Mug_Teapot_Shampoo_Bottle_Bowl_RubiksCube_MilkCarton')
-    else:
-        raise ValueError('Invalid allowed_categories')
-    copy_model_to_upper_levels(checkpoints_dir)
+    pointcloud, mesh = sample_pointcloud(obj_id=args.obj_id, dataset_dir=args.dataset_root_folder, allowed_categories=allowed_categories, split=args.split, scale=args.scale)
+    pointcloud = torch.tensor(pointcloud, dtype=torch.float32)
     
-    n_grasps = 5
-    pointcloud = P
-
     print('##########################################################')
     print('Train category / Test category: {}/{}'.format(args.allowed_categories, test_categories))
     print('##########################################################')
     print('Dataset split: {}'.format(args.split))
-    print('Selected object: {}'.format(obj_id))
+    print('Selected object: {}'.format(args.obj_id))
 
-    H = generate_grasps(checkpoints_dir=checkpoints_dir, n_grasps=n_grasps, pointcloud=pointcloud, device=device)
-
-    H[..., :3, -1] *= 1 / scale
-
+    return_chain = False
+    H_chain = generate_grasps(checkpoints_dir=checkpoints_dir, n_grasps=args.n_grasps, pointcloud=pointcloud, device=device, scale=args.scale, return_chain=return_chain)
+    if return_chain:
+        H = H_chain[0]
+    else:
+        H = H_chain
+    
     # Visualize results
     from se3dif.visualization import grasp_visualization
-    P *= 1 / scale
-    grasp_visualization.visualize_grasps(H, p_cloud=P)
+    grasp_visualization.visualize_grasps(H, p_cloud=pointcloud, scale_pc=args.scale)
 
-    # Uncomment the following lines to visualize the grasps with the mesh
-    # P *= 1 / scale
-    # mesh = mesh.apply_scale(1 / scale)
-    # grasp_visualization.visualize_grasps(H, p_cloud=P, mesh=mesh)
+    # visualize the grasps with the mesh
+    # grasp_visualization.visualize_grasps(H, p_cloud=pointcloud, scale_pc=args.scale, mesh=mesh.apply_scale(1 / args.scale))
 
