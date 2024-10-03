@@ -15,6 +15,20 @@ from se3dif.utils import get_root_src
 
 from mesh_to_sdf.scan import ScanPointcloud
 
+# Selected 10 categories from the ACRONYM dataset
+CAT10_set = {
+    'Book',
+    'Bottle',
+    'Bowl',
+    'Cup',
+    'Hammer',
+    'MilkCarton',
+    'Mug',
+    'RubiksCube',
+    'Shampoo',
+    'Teapot',
+}
+
 device = 'cpu'
 base_dir = os.path.join(get_root_src(), 'grasp_diffusion')
 train_params_dir = os.path.join(base_dir, 'scripts', 'train', 'params')
@@ -24,9 +38,9 @@ root_dir = os.path.abspath(os.path.dirname(__file__ + '/../../../../../'))
 allowed_categories = 'Cup'  # 'Cup' or 'Mug-v00' or 'CAT10'
 n_grasps = 5
 # path to the checkpoints directory of different categories
-checkpoints_dir = os.path.join(get_root_src(), 'logs/multiobject_partial_graspdif/Cup/bs_4_2024-09-25_20-50/checkpoints')
-# checkpoints_dir = os.path.join(get_root_src(), 'logs/multiobject_partial_graspdif/Mug-v00/bs_4_2024-09-25_20-50/checkpoints')
-# checkpoints_dir = os.path.join(get_root_src(), 'logs/multiobject_partial_graspdif/Book_Hammer_Cup_Mug_Teapot_Shampoo_Bottle_Bowl_RubiksCube_MilkCarton/bs_4_2024-09-26_10-08/checkpoints')
+checkpoints_dir = os.path.join(base_dir, 'checkpoints_se3dif', allowed_categories)
+
+
 dataset_root_folder = os.path.join(root_dir, 'grasp_diffusion_network/dataset_acronym_shapenetsem')
 
 
@@ -70,8 +84,6 @@ def get_approximated_grasp_diffusion_field(p, device='cpu', batch=10, checkpoint
     }
 
     model = load_model_pointcloud_grasp_diffusion(model_args)
-
-    # context = to_torch(p[None, ...], device)
     if isinstance(p, np.ndarray):
         context = to_torch(p[None, ...], device)
     else:
@@ -142,18 +154,21 @@ def generate_grasps(checkpoints_dir, n_grasps, pointcloud, device='cpu', scale=8
     return H_chain
 
 
+def count_parameters_torch(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+
+
 if __name__ == '__main__':
 
     args = parse_args()
 
     if args.allowed_categories == 'CAT10':
-        # random choose one category from Book, Hammer, Cup, Mug, Teapot, Shampoo_Bottle, Bowl, RubiksCube, MilkCarton 
-        allowed_categories = np.random.choice(['Book', 'Hammer', 'Cup', 'Mug', 'Teapot', 'Shampoo_Bottle', 'Bowl', 'RubiksCube', 'MilkCarton'])
-        test_categories = allowed_categories
+        # randomly select a category from the CAT10 set
+        test_categories = np.random.choice(list(CAT10_set))
     else:
-        allowed_categories = args.allowed_categories
-        test_categories = allowed_categories
-    pointcloud, mesh = sample_pointcloud(obj_id=args.obj_id, dataset_dir=args.dataset_root_folder, allowed_categories=allowed_categories, split=args.split, scale=args.scale)
+        test_categories = args.allowed_categories
+    pointcloud, mesh = sample_pointcloud(obj_id=args.obj_id, dataset_dir=args.dataset_root_folder, allowed_categories=test_categories, split=args.split, scale=args.scale)
     pointcloud = torch.tensor(pointcloud, dtype=torch.float32)
     
     print('##########################################################')

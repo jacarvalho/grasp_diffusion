@@ -5,6 +5,7 @@ import configargparse
 import numpy as np
 from datetime import datetime
 from se3dif.utils import get_root_src
+from se3dif.utils import generate_opt_yaml
 
 import torch
 from torch.utils.data import DataLoader
@@ -24,7 +25,7 @@ dataset_root_folder = os.path.join(root_dir, 'grasp_diffusion_network/dataset_ac
 train_params_dir = os.path.join(get_root_src(), 'grasp_diffusion', 'scripts', 'train', 'params')
 
 # Selected 10 categories from the ACRONYM dataset
-CAT10 = {
+CAT10_set = {
     'Book',
     'Bottle',
     'Bowl',
@@ -60,7 +61,7 @@ def parse_args():
     # p.add_argument('--class_type', type=str, default='Mug')
     
     p.add_argument('--dataset_root_folder', type=str, default=dataset_root_folder, help='Path to dataset_acronym_shapenetsem')
-    p.add_argument('--allowed_categories', type=str or set, default="Mug-v00", choices="Mug-v00,Mug-v01,Mug-v04,Cup" or CAT10,help='Just for using our splied dataset')
+    p.add_argument('--allowed_categories', type=str or set, default="Mug-v00", choices="Mug-v00,Mug-v01,Mug-v04,Cup,CAT10",help='for using dataset_acronym_shapenetsem')
     p.add_argument('--batch_size', type=int, default=4, help='Batch size')
 
     opt = p.parse_args()
@@ -73,7 +74,7 @@ def load_train_test_files(allowed_categories, dataset_root_folder):
 
     splits_dir = os.path.join(dataset_root_folder, 'splits')
 
-    if isinstance(allowed_categories, str):
+    if isinstance(allowed_categories, str) and allowed_categories != 'CAT10':
         json_file_name = f"{allowed_categories}.json"
         json_file_path = os.path.join(splits_dir, json_file_name)
 
@@ -86,9 +87,10 @@ def load_train_test_files(allowed_categories, dataset_root_folder):
         # Combine base path with file names
         train_files = [os.path.join(dataset_root_folder, 'grasps', fname) for fname in train_file_names]
         test_files = [os.path.join(dataset_root_folder, 'grasps', fname) for fname in test_file_names]
-    elif isinstance(allowed_categories, set):
+    elif isinstance(allowed_categories, str) and allowed_categories == 'CAT10':
+        allowed_categories_set = CAT10_set
         # Multiple categories, accumulate files from each
-        for category in allowed_categories:
+        for category in allowed_categories_set:
             json_file_name = f"{category}.json"
             json_file_path = os.path.join(splits_dir, json_file_name)
 
@@ -104,7 +106,7 @@ def load_train_test_files(allowed_categories, dataset_root_folder):
             train_files.extend([os.path.join(dataset_root_folder, 'grasps', fname) for fname in train_file_names])
             test_files.extend([os.path.join(dataset_root_folder, 'grasps', fname) for fname in test_file_names])
     else:
-        raise ValueError("allowed_categories must be a string or a set of strings.")
+        raise ValueError("allowed_categories must be a string or set of strings.")
 
     # Normalize the file paths and convert to numpy arrays
     train_files = np.array([os.path.normpath(fpath) for fpath in train_files])
@@ -114,7 +116,6 @@ def load_train_test_files(allowed_categories, dataset_root_folder):
 
 
 def main(opt):
-
     ## Load training args ##
     spec_file = os.path.join(opt.specs_file_dir, opt.spec_file)
     args = load_experiment_specifications(spec_file)
@@ -129,6 +130,9 @@ def main(opt):
     exp_dir = os.path.join(root_dir, args['exp_log_dir'], class_type)
     exp_dir = os.path.join(exp_dir,f"bs_{opt.batch_size}_{current_time}")
     args['saving_folder'] = exp_dir
+    
+    # generate opt yaml for evaluation in grasp diffusion network
+    generate_opt_yaml(save_path=exp_dir, allowed_categories=opt.allowed_categories if opt.allowed_categories != 'CAT10' else CAT10_set)
 
     if opt.device =='cuda':
         if 'cuda_device' in args:

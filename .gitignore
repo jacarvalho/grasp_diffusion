@@ -155,3 +155,5 @@ gifs/
 
 *copy*
 mesh_to_sdf/
+
+checkpoints_se3dif/
