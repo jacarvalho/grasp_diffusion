@@ -35,7 +35,7 @@ CAT10_set = {
     'Mug',
     'RubiksCube',
     'Shampoo',
-    'Teapot',
+    'SodaCan',
 }
 
 def parse_args():

@@ -26,7 +26,7 @@ CAT10_set = {
     'Mug',
     'RubiksCube',
     'Shampoo',
-    'Teapot',
+    'SodaCan',
 }
 
 device = 'cpu'
