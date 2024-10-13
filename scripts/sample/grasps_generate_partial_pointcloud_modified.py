@@ -154,11 +154,6 @@ def generate_grasps(checkpoints_dir, n_grasps, pointcloud, device='cpu', scale=8
     return H_chain
 
 
-def count_parameters_torch(model):
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-
-
 if __name__ == '__main__':
 
     args = parse_args()

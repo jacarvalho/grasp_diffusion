@@ -159,44 +159,31 @@ class Grasp_AnnealedLD():
             H1 = SO3_R3(R=R1_out, t=t1_out).to_matrix()
 
         return H1
-    
 
-    def sample(self, save_path=False, batch=None, return_chain=False):
+    def sample(self, save_path=False, batch=None):
 
-            ## 1.Sample initial SE(3) ##
-            if batch is None:
-                batch = self.batch
-            H0 = SO3_R3().sample(batch).to(self.device, torch.float32)
+        ## 1.Sample initial SE(3) ##
+        if batch is None:
+            batch = self.batch
+        H0 = SO3_R3().sample(batch).to(self.device, torch.float32)
 
-            ## 2.Langevin Dynamics (We evolve the data as [R3, SO(3)] pose) ##
-            Ht = H0
+        ## 2.Langevin Dynamics (We evolve the data as [R3, SO(3)] pose)##
+        Ht = H0
+        if save_path:
+            trj_H = Ht[None,...]
+        for t in range(self.T):
+            Ht = self._step(Ht, t, noise_off=self.deterministic)
             if save_path:
-                trj_H = Ht[None, ...]
-            if return_chain:
-                Ht_chain = []
-            for t in range(self.T):
-                Ht = self._step(Ht, t, noise_off=self.deterministic)
-                if save_path:
-                    trj_H = torch.cat((trj_H, Ht[None, :]), 0)
-            for t in range(self.T_fit):
-                Ht = self._step(Ht, self.T, noise_off=True)
-                if save_path:
-                    trj_H = torch.cat((trj_H, Ht[None, :]), 0)
-                if return_chain:
-                    Ht_chain.append(Ht)
-            if return_chain:
-                Ht_chain = torch.stack(Ht_chain, dim=0)
-                Ht_chain = Ht_chain.flip(dims=[0])
-                if save_path:
-                    return Ht_chain, trj_H
-                else:
-                    return Ht_chain
-            else:
-                if save_path:
-                    return Ht, trj_H
-                else:
-                    return Ht
+                trj_H = torch.cat((trj_H, Ht[None,:]), 0)
+        for t in range(self.T_fit):
+            Ht = self._step(Ht, self.T, noise_off=True)
+            if save_path:
+                trj_H = torch.cat((trj_H, Ht[None,:]), 0)
 
+        if save_path:
+            return Ht, trj_H
+        else:
+            return Ht
 
 
 
