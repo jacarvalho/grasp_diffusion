@@ -1,4 +1,6 @@
+import os
 import numpy as np
+import psutil
 import torch
 import trimesh
 import io
@@ -105,7 +107,9 @@ def visualize_points(model, input):
     trimesh.Scene([p_cloud_tri, pc2, grip]).show()
 
 
-def visualize_grasps(Hs, scale=1., p_cloud=None, energies=None, colors=None, mesh=None, show=True):
+def visualize_grasps(Hs, scale=1., p_cloud=None, energies=None, colors=None, mesh=None, show=True, scale_pc=None):
+    if scale_pc is not None:
+        p_cloud *= 1 / scale_pc
 
     ## Set color list
     if colors is None:
@@ -146,6 +150,7 @@ def visualize_grasps(Hs, scale=1., p_cloud=None, energies=None, colors=None, mes
         return scene
 
 
+
 def generate_mesh_grid(xmin=[-1.,-1.,-1.], xmax = [1., 1.,1.], n_points=20):
     x = torch.linspace(xmin[0], xmax[0], n_points)
     y = torch.linspace(xmin[1], xmax[1], n_points)
@@ -158,7 +163,6 @@ def generate_mesh_grid(xmin=[-1.,-1.,-1.], xmax = [1., 1.,1.], n_points=20):
 
 
 def get_scene_grasps_image(Hs, scale=1., p_cloud=None, energies=None, colors=None, mesh=None):
-
     ## Set color list
     if colors is None:
         if energies is None:
@@ -167,8 +171,6 @@ def get_scene_grasps_image(Hs, scale=1., p_cloud=None, energies=None, colors=Non
             min_energy = energies.min()
             energies -=min_energy
             color = energies/(np.max(energies)+1e-6)
-
-    ## Grips
     grips = []
     for k in range(Hs.shape[0]):
         H = Hs[k,...]
@@ -183,20 +185,26 @@ def get_scene_grasps_image(Hs, scale=1., p_cloud=None, energies=None, colors=Non
         grips.append(
             create_gripper_marker(color=c_vis, scale=scale).apply_transform(H)
         )
-
+    
     ## Visualize grips and the object
-    if mesh is not None:
-        scene = trimesh.Scene([mesh]+ grips)
-    elif p_cloud is not None:
-        c = np.ones((p_cloud.shape[0],4))
-        c[:,0] = np.zeros(p_cloud.shape[0])
-        p_cloud_tri = trimesh.points.PointCloud(p_cloud, colors=c)
-        scene = trimesh.Scene([p_cloud_tri]+ grips)
-    else:
-        scene = trimesh.Scene(grips)
+    try:
+        if mesh is not None:
+            scene = trimesh.Scene([mesh]+ grips)
+        elif p_cloud is not None:
+            c = np.ones((p_cloud.shape[0],4))
+            c[:,0] = np.zeros(p_cloud.shape[0])
+            p_cloud_tri = trimesh.points.PointCloud(p_cloud, colors=c)
+            scene = trimesh.Scene([p_cloud_tri]+ grips)
+        else:
+            scene = trimesh.Scene(grips)
 
-    window_conf = gl.Config(double_buffer=True, depth_size=24)
-    data = scene.save_image(resolution=[1080, 1080],
-                           window_conf=window_conf, visible=False)
-    image = np.array(Image.open(io.BytesIO(data)))
-    return image
+        window_conf = gl.Config(double_buffer=True, depth_size=24)
+        data = scene.save_image(resolution=[1080, 1080],
+                            window_conf=window_conf, visible=False)
+        image = np.array(Image.open(io.BytesIO(data)))
+        return image
+    
+    finally:
+        # Ensure manual cleanup of resources
+        del grips
+        del scene

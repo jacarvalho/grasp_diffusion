@@ -102,4 +102,3 @@ if __name__ == '__main__':
     P *=1/8
     mesh = mesh.apply_scale(1/8)
     grasp_visualization.visualize_grasps(to_numpy(H), p_cloud=P)#, mesh=mesh)
-

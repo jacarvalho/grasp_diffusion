@@ -19,11 +19,17 @@ def load_experiment_specifications(experiment_directory):
     return json.load(open(filename))
 
 
+# def dict_to_device(ob, device):
+#     if isinstance(ob, collections.Mapping):
+#         return {k: dict_to_device(v, device) for k, v in ob.items()}
+#     else:
+#         return ob.to(device)
+
 def dict_to_device(ob, device):
     if isinstance(ob, collections.Mapping):
         return {k: dict_to_device(v, device) for k, v in ob.items()}
     else:
-        return ob.to(device)
+        return ob.to(device, non_blocking=True).clone()
 
 
 def to_numpy(x):

@@ -1,3 +1,4 @@
+import gc
 import numpy as np
 import torchvision
 import torch
@@ -24,7 +25,7 @@ def sdf_summary(model, model_input, ground_truth, info, writer, iter, prefix="")
     writer.add_scalar(prefix + "out_max", pred_sdf.max(), iter)
     writer.add_scalar(prefix + "target_out_min", gt_sdf.min(), iter)
     writer.add_scalar(prefix + "target_out_max", gt_sdf.max(), iter)
-
+    
     ## Set colors based on good occupancy predictions ##
     input_coords = coords[:1].detach().cpu().numpy()
     pred_sdf = pred_sdf[:1,...].detach().cpu().numpy()
@@ -55,6 +56,9 @@ def sdf_summary(model, model_input, ground_truth, info, writer, iter, prefix="")
     idxs = np.argwhere((gt_sdf < thrs))
     input_red = input_coords[:,idxs[:,0],...]
     point_cloud(writer, iter, prefix+'reconstr_sdf_target', input_red)
+    
+    del model_input, ground_truth, info 
+
 
 
 def point_cloud(writer, iter, name, points_xyz, colors=None):

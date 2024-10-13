@@ -2,6 +2,7 @@ import os
 import torch
 import torch.nn as nn
 import numpy as np
+import glob
 
 from se3dif import models
 
@@ -16,6 +17,11 @@ def load_model(args):
                                                                       args['pretrained_model']))
         args["NetworkArch"] = model_args["NetworkArch"]
         args["NetworkSpecs"] = model_args["NetworkSpecs"]
+    elif 'saving_folder' in args:
+        model_args = load_experiment_specifications(args['params_dir'])
+        args["NetworkArch"] = model_args["NetworkArch"]
+        args["NetworkSpecs"] = model_args["NetworkSpecs"]
+        
 
     if args['NetworkArch'] == 'GraspDiffusion':
         model = load_grasp_diffusion(args)
@@ -24,8 +30,13 @@ def load_model(args):
 
 
     if 'pretrained_model' in args:
-        model_path = os.path.join(pretrained_models_dir, args['pretrained_model'], 'model.pth')
-
+        # model_path = os.path.join(pretrained_models_dir, args['pretrained_model'], 'model.pth')
+        # model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
+        model_dir = os.path.join(pretrained_models_dir, args['pretrained_model'])
+        model_files = glob.glob(os.path.join(model_dir, 'model*.pth'))
+        if not model_files:
+            raise FileNotFoundError(f"No model files starting with 'model' found in {model_dir}")
+        model_path = max(model_files, key=os.path.getmtime)
         model.load_state_dict(torch.load(model_path, map_location=torch.device('cpu')))
 
         if args['device'] != 'cpu':
@@ -40,6 +51,51 @@ def load_model(args):
                 model.load_state_dict(torch.load(load_model_dir))
         except:
             pass
+
+    return model
+
+
+def load_model_pointcloud_grasp_diffusion(args):
+    args["NetworkArch"] = "PointcloudGraspDiffusion"
+    args["NetworkSpecs"] = {
+        "feature_encoder": {
+        "enc_dim": 132,
+        "in_dim": 3,
+        "out_dim": 7,
+        "dims" : [ 512, 512, 512, 512, 512, 512, 512, 512],
+        "dropout" : [0, 1, 2, 3, 4, 5, 6, 7],
+        "dropout_prob" : 0.2,
+        "norm_layers" : [0, 1, 2, 3, 4, 5, 6, 7],
+        "latent_in" : [4],
+        "xyz_in_all" : False,
+        "use_tanh" : False,
+        "latent_dropout" : False,
+        "weight_norm" : True
+        },
+        "encoder": {
+        "latent_size": 132,
+        "hidden_dim": 512
+        },
+        "points": {
+        "n_points": 30,
+        "loc": [0.0, 0.0, 0.5],
+        "scale": [0.7, 0.5, 0.7]
+        },
+        "decoder": {
+        "hidden_dim": 512
+        }
+        }
+        
+    model = load_pointcloud_grasp_diffusion(args)
+    load_model_dir = args['checkpoints_dir']
+
+    try:
+        if args['device'] == 'cpu':
+            model.load_state_dict(torch.load(load_model_dir, map_location=torch.device('cpu')))
+        else:
+            model.load_state_dict(torch.load(load_model_dir))
+    except:
+        pass
 
     return model
 

@@ -1,3 +1,4 @@
+import gc
 import os
 import pickle
 import h5py
@@ -137,6 +138,7 @@ if __name__ == '__main__':
                     #scene.add(cloud_pcl)
 
                     viewer = pyrender.Viewer(scene, use_raymond_lighting=True, point_size=2)
+
 
             except:
                 print('here')

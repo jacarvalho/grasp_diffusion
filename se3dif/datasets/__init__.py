@@ -1,2 +1,2 @@
-from .acronym_dataset import AcronymGrasps, AcronymGraspsDirectory, AcronymAndSDFDataset,\
+from .acronym_dataset import AcronymGrasps, AcronymGraspsDirectory, AcronymAndSDFDataset,AcronymGraspsDirectory_,\
                              PointcloudAcronymAndSDFDataset, PartialPointcloudAcronymAndSDFDataset

@@ -152,3 +152,8 @@ dmypy.json
 
 **no_add/
 gifs/
+
+*copy*
+mesh_to_sdf/
+
+checkpoints_se3dif/

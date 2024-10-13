@@ -1,5 +1,7 @@
+import os
 from .denoising_loss import ProjectedSE3DenoisingLoss, SE3DenoisingLoss
 from .sdf_loss import SDFLoss
+import psutil
 
 
 def get_losses(args):
@@ -22,9 +24,9 @@ class LossDictionary():
     def __init__(self, loss_dict):
         self.fields = loss_dict.keys()
         self.loss_dict = loss_dict
+        
 
     def loss_fn(self, model, model_input, ground_truth, val=False):
-
         losses = {}
         infos = {}
         for field in self.fields:
